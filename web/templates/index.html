@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Chase — CS4221</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+  :root {
+    --accent: #3CFFB0;
+    --accent2: #7B61FF;
+    --red: #FF5C5C;
+    --yellow: #FFD93D;
+    --text: #D8DEE9;
+    --dim: #5E6B80;
+    --bg: #080B12;
+    --surface: #0D1117;
+    --surface2: #161B22;
+    --border: #1C2333;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+  ::selection { background: rgba(60,255,176,.25); }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Layout */
+  .header { border-bottom: 1px solid var(--border); padding: 22px 28px 16px;
+    background: linear-gradient(180deg, rgba(60,255,176,.02), transparent); }
+  .header h1 { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); display: inline; }
+  .header .badge { font-family: var(--mono); font-size: 10px; color: var(--accent2);
+    background: rgba(123,97,255,.12); padding: 2px 8px; border-radius: 4px; margin-left: 10px; }
+  .header p { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 4px; letter-spacing: .4px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px 28px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+  .tab { padding: 9px 16px; background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--dim); cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 400;
+    letter-spacing: .3px; transition: all .15s; text-transform: uppercase; white-space: nowrap; }
+  .tab:hover { border-color: var(--accent); color: var(--accent); }
+  .tab.active { background: rgba(60,255,176,.1); border-color: rgba(60,255,176,.3); color: var(--accent); font-weight: 600; }
+
+  /* Examples */
+  .examples { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .examples span { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+  .ex-btn { padding: 3px 8px; background: transparent; border: 1px solid var(--border); border-radius: 4px;
+    color: var(--dim); cursor: pointer; font-family: var(--mono); font-size: 10px; transition: all .12s; }
+  .ex-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Panels */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  @media (max-width: 700px) { .panels { grid-template-columns: 1fr; } }
+
+  /* Inputs */
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-family: var(--mono); font-size: 10px; color: var(--dim);
+    text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 5px; }
+  .field input, .field textarea { width: 100%; padding: 10px 12px; background: rgba(0,0,0,.4);
+    border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--mono);
+    font-size: 12px; outline: none; resize: vertical; }
+  .field input { height: 38px; }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+
+  /* Run button */
+  .run-btn { width: 100%; padding: 13px; background: var(--accent); color: #080B12; border: none;
+    border-radius: 8px; font-family: var(--mono); font-size: 13px; font-weight: 700; cursor: pointer;
+    letter-spacing: 1.5px; text-transform: uppercase; transition: filter .15s; }
+  .run-btn:hover { filter: brightness(1.12); }
+  .run-btn:disabled { opacity: .5; cursor: wait; }
+
+  /* Results */
+  .result-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-top: 16px; }
+  .result-title { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase;
+    letter-spacing: 1.2px; margin-bottom: 12px; }
+
+  /* Step viewer */
+  .step-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .step-counter { font-family: var(--mono); font-size: 10px; color: var(--dim); letter-spacing: 1px; }
+  .step-btns { display: flex; gap: 4px; }
+  .step-btn { width: 28px; height: 28px; background: var(--surface2); border: 1px solid rgba(60,255,176,.2);
+    border-radius: 5px; color: var(--accent); cursor: pointer; font-family: var(--mono); font-size: 13px;
+    display: flex; align-items: center; justify-content: center; }
+  .step-btn:disabled { opacity: .3; cursor: default; border-color: var(--border); color: var(--dim); }
+  .step-desc { font-family: var(--mono); font-size: 12px; padding: 10px 14px; border-radius: 6px;
+    line-height: 1.5; background: var(--surface2); border-left: 3px solid var(--accent); margin-bottom: 12px; }
+  .step-desc.pass { color: var(--accent); background: rgba(60,255,176,.06); border-color: var(--accent); }
+  .step-desc.fail { color: var(--red); background: rgba(255,92,92,.06); border-color: var(--red); }
+  .progress-bar { height: 2px; background: var(--border); border-radius: 1px; margin-top: 14px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width .25s ease; }
+
+  /* Tables */
+  .data-table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; }
+  .data-table th { padding: 8px 12px; text-align: center; color: var(--accent); font-weight: 700;
+    font-size: 13px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+  .data-table td { padding: 6px 12px; text-align: center; border-bottom: 1px solid rgba(28,35,51,.5); }
+  .data-table .dist { color: var(--accent); font-weight: 600; background: rgba(60,255,176,.04); }
+
+  /* Validation pills */
+  .v-pill { padding: 12px 16px; background: var(--surface); border-radius: 8px; font-family: var(--mono);
+    font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .v-pill.ok { border: 1px solid rgba(60,255,176,.15); }
+  .v-pill.bad { border: 1px solid rgba(255,92,92,.15); }
+  .v-tag { font-weight: 600; font-size: 11px; padding: 2px 10px; border-radius: 4px; }
+  .v-tag.ok { color: var(--accent); background: rgba(60,255,176,.08); }
+  .v-tag.bad { color: var(--red); background: rgba(255,92,92,.08); }
+
+  /* FD badges */
+  .fd-badge { display: inline-block; padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 4px; font-family: var(--mono); font-size: 12px; color: var(--text); margin: 3px; }
+
+  /* Key badges */
+  .key-badge { padding: 8px 16px; background: rgba(60,255,176,.06); border: 1px solid rgba(60,255,176,.15);
+    border-radius: 6px; font-family: var(--mono); font-size: 14px; color: var(--accent); font-weight: 600; display: inline-block; margin: 4px; }
+
+  /* Info box */
+  .info-box { padding: 14px; background: rgba(60,255,176,.03); border: 1px solid rgba(60,255,176,.08);
+    border-radius: 8px; font-family: var(--mono); font-size: 11px; color: var(--dim); line-height: 1.7; }
+  .info-box strong { color: var(--accent); }
+
+  /* Error */
+  .error { padding: 10px 14px; background: rgba(255,92,92,.08); border: 1px solid rgba(255,92,92,.2);
+    border-radius: 6px; font-family: var(--mono); font-size: 11px; color: var(--red); margin-top: 10px; }
+
+  /* Benchmark bars */
+  .bench-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+  .bench-label { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 130px; text-align: right; }
+  .bench-track { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .bench-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 3px; transition: width .5s; }
+  .bench-val { font-family: var(--mono); font-size: 10px; color: var(--accent2); width: 60px; }
+
+  .hidden { display: none; }
+  .closure-result { font-family: var(--mono); font-size: 18px; color: var(--accent); }
+  .closure-result sup { font-size: 11px; }
+  .closure-eq { color: var(--dim); margin: 0 10px; }
+
+  /* Footer */
+  .footer { margin-top: 28px; text-align: center; font-family: var(--mono); font-size: 9px;
+    color: var(--dim); letter-spacing: 1px; padding-bottom: 20px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="container" style="padding:0">
+    <h1>THE CHASE</h1>
+    <span class="badge">v2.0 · WEB</span>
+    <p>CS4221 Database Tuning · NUS · FD &amp; MVD Chase Algorithm</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Tabs -->
+  <div class="tabs" id="tabs">
+    <button class="tab active" data-tab="table_check">⊞ Table Check</button>
+    <button class="tab" data-tab="entailment">⊢ Entailment</button>
+    <button class="tab" data-tab="lossless">⋈ Lossless</button>
+    <button class="tab" data-tab="mincover">▼ Min Cover</button>
+    <button class="tab" data-tab="closure">⁺ Closure</button>
+    <button class="tab" data-tab="keys">⌗ Keys</button>
+    <button class="tab" data-tab="discover">🔍 Discover</button>
+    <button class="tab" data-tab="bench">⚡ Bench</button>
+  </div>
+
+  <!-- Examples -->
+  <div class="examples">
+    <span>Load:</span>
+    <button class="ex-btn" onclick="loadExample('tableCheck')">Table→FD</button>
+    <button class="ex-btn" onclick="loadExample('entailment')">Entailment</button>
+    <button class="ex-btn" onclick="loadExample('lossless')">Lossless</button>
+    <button class="ex-btn" onclick="loadExample('mvd')">MVD</button>
+    <button class="ex-btn" onclick="loadExample('university')">University</button>
+  </div>
+
+  <!-- Input panels -->
+  <div class="panels">
+    <div class="panel">
+      <div class="field">
+        <label>Attributes (comma-separated)</label>
+        <input id="attrs" value="A, B, C" placeholder="A, B, C, D">
+      </div>
+      <div class="field">
+        <label>Dependencies (FD: X,Y->Z  |  MVD: X->>Y)</label>
+        <textarea id="fds" rows="4" placeholder="A,B -> C&#10;C -> D&#10;A ->> B">A -> B
+A -> C
+B -> C</textarea>
+      </div>
+    </div>
+
+    <div class="panel" id="right-panel">
+      <!-- Dynamic content per tab -->
+    </div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="run()">▶ Run</button>
+
+  <div id="error" class="error hidden"></div>
+  <div id="results"></div>
+
+  <div class="footer">CS4221 · NUS · The Chase Algorithm · FD + MVD</div>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let currentTab = 'table_check';
+
+const EXAMPLES = {
+  tableCheck: { attrs: 'A, B, C', fds: 'A -> B\nA -> C\nB -> C', table: '1, 2, 3\n1, 2, 4\n2, 3, 3' },
+  entailment: { attrs: 'A, B, C, D', fds: 'A,B -> C\nC -> D\nD -> A', target: 'A,B -> D' },
+  lossless:   { attrs: 'A, B, C, D, E', fds: 'A -> B,C\nC -> D\nD -> E', decomp: '{A,B,C}\n{C,D}\n{D,E}' },
+  mvd:        { attrs: 'A, B, C, D', fds: 'A ->> B\nA -> C', decomp: '{A,B}\n{A,C,D}' },
+  university: { attrs: 'S, C, I, G, R', fds: 'S,C -> G\nC -> I\nI -> C\nS,C -> R', decomp: '{S,C,G,R}\n{C,I}' },
+};
+
+const RIGHT_PANELS = {
+  table_check: `
+    <div class="field"><label>Table Rows (comma-separated per row)</label>
+    <textarea id="table" rows="4" placeholder="1, 2, 3&#10;1, 2, 4">1, 2, 3\n1, 2, 4\n2, 3, 3</textarea></div>
+    <div class="info-box"><strong>Table → FD Validation</strong><br>Check which FDs/MVDs from the set are satisfied by the given table instance.</div>`,
+  entailment: `
+    <div class="field"><label>Target FD to check</label>
+    <input id="target" value="A,B -> D" placeholder="A,B -> D"></div>
+    <div class="info-box"><strong>Chase Entailment</strong><br>2-row tableau test: is the target FD logically implied by Σ?</div>`,
+  lossless: `
+    <div class="field"><label>Decomposition (one per line: {A,B,C})</label>
+    <textarea id="decomp" rows="3" placeholder="{A,B,C}&#10;{C,D}">{A,B,C}\n{C,D}</textarea></div>
+    <div class="info-box"><strong>Lossless-Join (FD + MVD)</strong><br>Full tableau chase with FD equating and MVD row-generation rules.</div>`,
+  mincover: `<div class="info-box"><strong>Minimal Cover</strong><br>1. Singleton RHS → 2. Remove extraneous LHS → 3. Remove redundant FDs → 4. Merge</div>`,
+  closure: `
+    <div class="field"><label>Attributes for closure</label>
+    <input id="closureInput" value="A, B" placeholder="A, B"></div>
+    <div class="info-box"><strong>Attribute Closure</strong><br>Compute X⁺ and check if it's a superkey.</div>`,
+  keys: `<div class="info-box"><strong>Candidate Keys</strong><br>Find all minimal attribute sets whose closure covers the full schema.</div>`,
+  discover: `
+    <div class="field"><label>Table Rows (comma-separated per row)</label>
+    <textarea id="discoverTable" rows="4" placeholder="Alice, CS, Prof X&#10;Bob, CS, Prof X">Alice, CS, Prof X\nBob, CS, Prof X\nCharlie, Math, Prof Y\nDiana, Math, Prof Y</textarea></div>
+    <div class="info-box"><strong>FD Discovery</strong><br>Discover minimal FDs from a table using partition refinement.</div>`,
+  bench: `<div class="info-box"><strong>Benchmark</strong><br>Time closure, minimal cover, entailment, and candidate keys on random FD sets of increasing size. Also runs FD-only vs FD+MVD ablation.</div>`,
+};
+
+// ── Tab switching ───────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTab = btn.dataset.tab;
+    document.getElementById('right-panel').innerHTML = RIGHT_PANELS[currentTab] || '';
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('error').classList.add('hidden');
+    // Update run button text
+    const labels = { table_check:'FD Check', entailment:'Chase', lossless:'Chase',
+      mincover:'Min Cover', closure:'Closure', keys:'Find Keys', discover:'Discover', bench:'Benchmark' };
+    document.getElementById('runBtn').textContent = '▶ Run ' + (labels[currentTab] || 'Chase');
+  });
+});
+
+// ── Load example ────────────────────────────────────────────────────────────
+function loadExample(key) {
+  const ex = EXAMPLES[key];
+  if (ex.attrs) document.getElementById('attrs').value = ex.attrs;
+  if (ex.fds) document.getElementById('fds').value = ex.fds;
+  // Set right-panel fields after a tick (they might not exist yet)
+  setTimeout(() => {
+    if (ex.target && document.getElementById('target')) document.getElementById('target').value = ex.target;
+    if (ex.decomp && document.getElementById('decomp')) document.getElementById('decomp').value = ex.decomp;
+    if (ex.table && document.getElementById('table')) document.getElementById('table').value = ex.table;
+  }, 50);
+}
+
+// ── API call ────────────────────────────────────────────────────────────────
+async function apiCall(endpoint, body) {
+  const res = await fetch('/api/' + endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+// ── Run ─────────────────────────────────────────────────────────────────────
+async function run() {
+  const errEl = document.getElementById('error');
+  const resEl = document.getElementById('results');
+  const btn = document.getElementById('runBtn');
+  errEl.classList.add('hidden');
+  resEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = '⟳ Running...';
+
+  try {
+    const attrs = document.getElementById('attrs').value;
+    const fds = document.getElementById('fds').value;
+    let data;
+
+    switch (currentTab) {
+      case 'table_check':
+        data = await apiCall('table_check', { attrs, fds, table: gv('table') });
+        renderTableCheck(data);
+        break;
+      case 'entailment':
+        data = await apiCall('entailment', { attrs, fds, target: gv('target') });
+        renderSteps(data, 'entailed');
+        break;
+      case 'lossless':
+        data = await apiCall('lossless', { attrs, fds, decomp: gv('decomp') });
+        renderSteps(data, 'lossless');
+        break;
+      case 'mincover':
+        data = await apiCall('mincover', { fds });
+        renderMinCover(data);
+        break;
+      case 'closure':
+        data = await apiCall('closure', { attrs, fds, target: gv('closureInput') });
+        renderClosure(data);
+        break;
+      case 'keys':
+        data = await apiCall('keys', { attrs, fds });
+        renderKeys(data);
+        break;
+      case 'discover':
+        data = await apiCall('discover', { attrs, table: gv('discoverTable') });
+        renderDiscover(data);
+        break;
+      case 'bench':
+        data = await apiCall('benchmark', { attrs });
+        renderBenchmark(data);
+        break;
+    }
+
+    if (data && !data.success) {
+      errEl.textContent = data.error;
+      errEl.classList.remove('hidden');
+    }
+  } catch (e) {
+    errEl.textContent = 'Request failed: ' + e.message;
+    errEl.classList.remove('hidden');
+  }
+
+  btn.disabled = false;
+  const labels = { table_check:'FD Check', entailment:'Chase', lossless:'Chase',
+    mincover:'Min Cover', closure:'Closure', keys:'Find Keys', discover:'Discover', bench:'Benchmark' };
+  btn.textContent = '▶ Run ' + (labels[currentTab] || 'Chase');
+}
+
+function gv(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+
+// ── Renderers ───────────────────────────────────────────────────────────────
+
+function renderTableCheck(data) {
+  if (!data.success) return;
+  let html = '<div class="result-box"><div class="result-title">Input Table</div>';
+  html += renderDataTable(data.table, data.attrs);
+  html += '</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">';
+  for (const v of data.validations) {
+    const ok = v.satisfied;
+    html += `<div class="v-pill ${ok?'ok':'bad'}"><span>${v.dep}</span>
+      <span class="v-tag ${ok?'ok':'bad'}">${ok ? '✓ SATISFIED' : '✗ VIOLATED ('+v.violations.length+')'}</span></div>`;
+  }
+  html += '</div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderSteps(data, resultKey) {
+  if (!data.success) return;
+  const steps = data.steps;
+  let stepIdx = 0;
+
+  function render() {
+    const s = steps[stepIdx];
+    const isLast = stepIdx === steps.length - 1;
+    const pass = isLast && data[resultKey];
+    const fail = isLast && !data[resultKey];
+
+    let html = '<div class="result-box">';
+    html += '<div class="step-nav">';
+    html += `<span class="step-counter">STEP ${stepIdx+1}/${steps.length}</span>`;
+    html += '<div class="step-btns">';
+    html += `<button class="step-btn" onclick="window._stepTo(0)" ${stepIdx===0?'disabled':''}>⟨⟨</button>`;
+    html += `<button class="step-btn" onclick="window._stepTo(${stepIdx-1})" ${stepIdx===0?'disabled':''}>⟨</button>`;
+    html += `<button class="step-btn" onclick="window._stepTo(${stepIdx+1})" ${stepIdx===steps.length-1?'disabled':''}>⟩</button>`;
+    html += `<button class="step-btn" onclick="window._stepTo(${steps.length-1})" ${stepIdx===steps.length-1?'disabled':''}>⟩⟩</button>`;
+    html += '</div></div>';
+    html += `<div class="step-desc ${pass?'pass':''} ${fail?'fail':''}">${s.desc}</div>`;
+
+    if (s.tableau) {
+      html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">';
+      html += '<table class="data-table"><thead><tr>';
+      html += '<th style="text-align:left;color:var(--dim);font-size:10px">ROW</th>';
+      for (const a of data.attrs) html += `<th>${a}</th>`;
+      html += '</tr></thead><tbody>';
+      s.tableau.forEach((row, i) => {
+        html += '<tr>';
+        html += `<td style="color:var(--dim);font-size:10px;text-align:left">R${i+1}</td>`;
+        for (const a of data.attrs) {
+          const v = row[a];
+          const d = v && v.startsWith('a_');
+          html += `<td class="${d?'dist':''}">${v}</td>`;
+        }
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+
+    html += `<div class="progress-bar"><div class="progress-fill" style="width:${((stepIdx+1)/steps.length)*100}%"></div></div>`;
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+  }
+
+  window._stepTo = (idx) => { stepIdx = Math.max(0, Math.min(steps.length-1, idx)); render(); };
+  render();
+}
+
+function renderMinCover(data) {
+  if (!data.success) return;
+  // Build step viewer for minimal cover
+  const steps = data.steps;
+  let stepIdx = 0;
+
+  function render() {
+    const s = steps[stepIdx];
+    let html = '<div class="result-box">';
+    html += '<div class="step-nav">';
+    html += `<span class="step-counter">STEP ${stepIdx+1}/${steps.length}</span>`;
+    html += '<div class="step-btns">';
+    html += `<button class="step-btn" onclick="window._mcStep(0)" ${stepIdx===0?'disabled':''}>⟨⟨</button>`;
+    html += `<button class="step-btn" onclick="window._mcStep(${stepIdx-1})" ${stepIdx===0?'disabled':''}>⟨</button>`;
+    html += `<button class="step-btn" onclick="window._mcStep(${stepIdx+1})" ${stepIdx===steps.length-1?'disabled':''}>⟩</button>`;
+    html += `<button class="step-btn" onclick="window._mcStep(${steps.length-1})" ${stepIdx===steps.length-1?'disabled':''}>⟩⟩</button>`;
+    html += '</div></div>';
+    html += `<div class="step-desc">${s.desc}</div>`;
+    html += '<div style="margin-top:10px">';
+    for (const fd of s.fds) html += `<span class="fd-badge">${fd}</span>`;
+    html += '</div>';
+    html += `<div class="progress-bar"><div class="progress-fill" style="width:${((stepIdx+1)/steps.length)*100}%"></div></div>`;
+    html += '</div>';
+    document.getElementById('results').innerHTML = html;
+  }
+
+  window._mcStep = (idx) => { stepIdx = Math.max(0, Math.min(steps.length-1, idx)); render(); };
+  render();
+}
+
+function renderClosure(data) {
+  if (!data.success) return;
+  let html = '<div class="result-box">';
+  html += `<div class="closure-result">{${data.input.join(',')}}<sup>+</sup>`;
+  html += `<span class="closure-eq">=</span>{${data.closure.join(',')}}</div>`;
+  html += `<div style="margin-top:10px;font-family:var(--mono);font-size:11px;color:${data.is_superkey?'var(--accent)':'var(--dim)'}">`;
+  html += data.is_superkey ? '✓ Superkey' : '○ Not a superkey';
+  html += '</div></div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderKeys(data) {
+  if (!data.success) return;
+  let html = '<div class="result-box"><div class="result-title">Candidate Keys</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px">';
+  for (const k of data.keys) html += `<div class="key-badge">⌗ {${k.join(', ')}}</div>`;
+  html += '</div>';
+  if (data.prime_attributes.length) {
+    html += `<div style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--dim)">`;
+    html += `Prime attributes: {${data.prime_attributes.join(', ')}}</div>`;
+  }
+  html += '</div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderDiscover(data) {
+  if (!data.success) return;
+  let html = `<div class="result-box"><div class="result-title">Discovered ${data.count} FDs</div>`;
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  for (const fd of data.fds) html += `<span class="fd-badge">${fd}</span>`;
+  html += '</div></div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderBenchmark(data) {
+  if (!data.success) return;
+  let html = '<div class="result-box"><div class="result-title">Performance Benchmark</div>';
+
+  // Table
+  html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+  html += '<table class="data-table"><thead><tr>';
+  html += '<th>Label</th><th>Operation</th><th>#FDs</th><th>ms/op</th>';
+  html += '</tr></thead><tbody>';
+  for (const e of data.entries) {
+    const color = {closure:'var(--accent)',min_cover:'var(--yellow)',entailment:'var(--accent2)',cand_keys:'var(--text)'}[e.operation]||'var(--text)';
+    html += `<tr><td style="text-align:left">${e.label}</td><td style="color:${color}">${e.operation}</td>`;
+    html += `<td>${e.num_fds}</td><td style="color:${color}">${e.time_ms}</td></tr>`;
+  }
+  html += '</tbody></table></div>';
+
+  // Entailment bars
+  const entailEntries = data.entries.filter(e => e.operation === 'entailment');
+  if (entailEntries.length) {
+    html += '<div class="result-title">Entailment Scaling</div>';
+    const maxT = Math.max(...entailEntries.map(e => e.time_ms));
+    for (const e of entailEntries) {
+      const pct = maxT > 0 ? (e.time_ms / maxT * 100) : 0;
+      html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
+      html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
+      html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
+    }
+  }
+
+  // Ablation
+  if (data.ablation && data.ablation.length) {
+    html += '<div class="result-title" style="margin-top:16px">Ablation: FD-only vs FD+MVD</div>';
+    const maxA = Math.max(...data.ablation.map(e => e.time_ms));
+    for (const e of data.ablation) {
+      const pct = maxA > 0 ? (e.time_ms / maxA * 100) : 0;
+      html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
+      html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
+      html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
+    }
+  }
+
+  html += '</div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderDataTable(rows, attrs) {
+  let html = '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">';
+  html += '<table class="data-table"><thead><tr>';
+  for (const a of attrs) html += `<th>${a}</th>`;
+  html += '</tr></thead><tbody>';
+  for (const row of rows) {
+    html += '<tr>';
+    for (const a of attrs) html += `<td>${row[a] || ''}</td>`;
+    html += '</tr>';
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// Init right panel
+document.getElementById('right-panel').innerHTML = RIGHT_PANELS['table_check'];
+</script>
+</body>
+</html>
