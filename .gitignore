@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest
+.pytest_cache/
+.pytest_cache*
+tests/__pycache__/
+
+# Environments & Local Configs
+.venv/
+venv/
+.env
+.DS_Store
+
+# Build & Docker artifacts
+build/
+dist/
+*.egg-info/

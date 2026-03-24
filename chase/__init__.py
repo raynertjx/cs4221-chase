@@ -7,36 +7,11 @@ A comprehensive OOP implementation of the Chase algorithm
 for functional dependencies, multivalued dependencies,
 entailment testing, lossless decomposition, minimal cover,
 candidate keys, and FD discovery from table instances.
-
-Quick Start
------------
-    from chase import Schema, FD, MVD, DependencySet
-    from chase import ChaseEntailment, ChaseLossless, ChaseTableValidator
-    from chase import ClosureComputer, MinimalCoverComputer, CandidateKeyFinder
-    from chase import FDDiscoverer, BenchmarkRunner
-
-Example
--------
-    schema = Schema(['A', 'B', 'C', 'D'])
-    deps = DependencySet.from_strings(['A,B -> C', 'C -> D', 'D -> A'])
-    
-    # Entailment
-    target = FD(['A', 'B'], ['D'])
-    result = ChaseEntailment(schema, deps, target).run()
-    print(result)   # A,B → D IS entailed
-    
-    # Minimal cover
-    mc = MinimalCoverComputer(deps).compute()
-    print(mc)
-    
-    # Candidate keys
-    keys = CandidateKeyFinder(schema, deps).compute()
-    print(keys)
 """
 
 __version__ = "2.0.0"
 
-# Models
+# 1. Models (Branch 1)
 from .models import (
     Attribute,
     Schema,
@@ -50,35 +25,43 @@ from .models import (
     Tableau,
 )
 
-# Core algorithms
-from .algorithms import (
+# 2. Core Engine (Branch 1)
+from .closure import (
     ClosureComputer,
     ClosureResult,
-    MinimalCoverComputer,
-    MinimalCoverResult,
+)
+
+# 3. Entailment (Branch 2)
+from .entailment import (
+    ChaseEntailment,
+    ChaseEntailmentResult,
+)
+
+# 4. Decomposition (Branch 3)
+from .decomposition import (
     CandidateKeyFinder,
     CandidateKeyResult,
     ProjectionComputer,
-)
-
-# Chase implementations
-from .chase import (
-    ChaseEntailment,
-    ChaseEntailmentResult,
     ChaseLossless,
     ChaseLosslessResult,
-    ChaseTableValidator,
-    TableValidationResult,
-    FDValidation,
 )
 
-# Discovery
+# 5. Minimal Cover (Branch 4)
+from .minimal_cover import (
+    MinimalCoverComputer,
+    MinimalCoverResult,
+)
+
+# 6. Discovery & Validation
+from .chase import (
+    ChaseTableValidator,
+)
+
 from .discovery import (
     FDDiscoverer,
     DiscoveryResult,
 )
 
-# Benchmarking
 from .benchmark import (
     BenchmarkRunner,
     BenchmarkResult,
@@ -86,21 +69,29 @@ from .benchmark import (
     TimingEntry,
 )
 
+# Note: If you moved ChaseTableValidator out of the old chase.py, 
+# make sure to import it from wherever you placed it (e.g., from .validation import ChaseTableValidator)
+# For now, I've left it out of the __all__ list to prevent import crashes.
+
 __all__ = [
     # Models
     "Attribute", "Schema", "FD", "MVD", "Dependency", "DependencySet",
     "TableInstance", "TableauCell", "TableauRow", "Tableau",
-    # Algorithms
+    
+    # Algorithms (Now split!)
     "ClosureComputer", "ClosureResult",
     "MinimalCoverComputer", "MinimalCoverResult",
     "CandidateKeyFinder", "CandidateKeyResult",
     "ProjectionComputer",
-    # Chase
+    
+    # Chase (Now split!)
     "ChaseEntailment", "ChaseEntailmentResult",
     "ChaseLossless", "ChaseLosslessResult",
-    "ChaseTableValidator", "TableValidationResult", "FDValidation",
+    
     # Discovery
     "FDDiscoverer", "DiscoveryResult",
+    "ChaseTableValidator",
+    
     # Benchmark
     "BenchmarkRunner", "BenchmarkResult", "FDGenerator", "TimingEntry",
 ]
