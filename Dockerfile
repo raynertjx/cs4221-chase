@@ -9,8 +9,7 @@ COPY chase/ chase/
 COPY web/ web/
 COPY examples/ examples/
 COPY tests/ tests/
-COPY pyproject.toml .
 
-EXPOSE 5000
+EXPOSE 8080 
 
 CMD ["python", "web/app.py"]
