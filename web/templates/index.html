@@ -400,7 +400,7 @@ function renderSteps(data, resultKey) {
         html += `<td style="color:var(--dim);font-size:10px;text-align:left">R${i+1}</td>`;
         for (const a of data.attrs) {
           const v = row[a];
-          const d = v && v.startsWith('a_');
+          const d = v && v.startsWith('α');
           html += `<td class="${d?'dist':''}">${v}</td>`;
         }
         html += '</tr>';
