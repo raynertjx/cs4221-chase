@@ -11,12 +11,34 @@ candidate keys, FD discovery from tables, and benchmarking.
 git clone https://github.com/<your-team>/chase-algorithm.git
 cd chase-algorithm
 
-# 2. Install Flask
+# 2. Install dependencies 
 pip install -r requirements.txt
 
 # 3. Run
 python web/app.py
+
+# 4. Run tests
+python3 -m pytest -v
+python3 -m pytest tests/test_entailment.py -v
+
+# 5. Spin up docker
+docker rm -f $(docker ps -aq)
+docker build -t my-app .
+docker run -d --name chase-v2 -p 8080:8080 my-app
+# view at:
+http://localhost:8080
+# check for errors:
+docker logs chase-v2
+
+# 6. Using makefile
+make test — Validates your logic.
+make web — Starts the UI for development.
+make docker — Handles the full build/run cycle.
+make clean — Wipes the junk 
+
 ```
+
+
 
 Then open **http://localhost:5000** in your browser.
 
@@ -37,28 +59,35 @@ step-by-step tableau viewer, all 8 features, and dark theme UI.
 ## Repo Structure
 
 ```
-chase-algorithm/
+cs4221-chase/
 ├── chase/                     # Core Python library
-│   ├── __init__.py            # Public API
-│   ├── models.py              # Schema, FD, MVD, DependencySet, TableInstance, Tableau
-│   ├── algorithms.py          # ClosureComputer, MinimalCoverComputer, CandidateKeyFinder
-│   ├── chase.py               # ChaseEntailment, ChaseLossless, ChaseTableValidator
-│   ├── discovery.py           # FDDiscoverer (partition refinement)
-│   └── benchmark.py           # BenchmarkRunner, FDGenerator
+│   ├── __init__.py            # Public API (Barrel exports)
+│   ├── models.py              # Schema, FD, MVD, DependencySet, TableInstance
+│   ├── closure.py             # Attribute Closure algorithm
+│   ├── minimal_cover.py       # Minimal Cover (3-step algorithm)
+│   ├── keys.py                # Candidate Key finding & Prime attributes
+│   ├── entailment.py          # Generalized Chase Engine (FD + MVD Support)
+│   ├── decomposition.py       # Lossless Join test & Projection
+│   ├── discovery.py           # FD Discoverer (Partition Refinement)
+│   ├── chase.py               # Legacy support & Table Validation
+│   └── benchmark.py           # Performance & Ablation runners
 ├── web/                       # Flask web application
-│   ├── app.py                 # API routes + server
-│   ├── templates/index.html   # Full frontend (single HTML file)
-│   └── static/                # (optional assets)
-├── tests/
-│   └── test_chase.py          # 23 unit tests
+│   ├── app.py                 # API routes (MVD-aware parsing)
+│   ├── templates/index.html   # VisualGo-style dark theme UI
+│   └── static/                # CSS/JS assets
+├── tests/                     # Comprehensive Unit Test Suite
+│   ├── test_models.py         # Model integrity
+│   ├── test_closure.py        # Closure & superkey logic
+│   ├── test_minimal_cover.py  # Redundancy removal
+│   ├── test_keys.py           # Candidate key finding
+│   ├── test_entailment.py     # MVD transitivity/replication
+│   ├── test_decomposition.py  # Lossless join (FD + MVD)
+│   ├── test_discovery.py      # FD discovery logic
+│   └── test_edge_cases.py     # Cycles & empty inputs
 ├── examples/
-│   ├── demo.py                # Full CLI walkthrough
-│   └── benchmark_runner.py    # Standalone benchmark script
-├── requirements.txt           # flask>=3.0
-├── Dockerfile                 # For cloud/VM deployment
-├── Makefile                   # make web / make test / etc.
-├── pyproject.toml
-├── .gitignore
+│   └── demo.py                # Full walkthrough of library features
+├── Dockerfile                 # Multi-stage production build
+├── requirements.txt           # flask>=3.0, pytest
 └── README.md
 ```
 

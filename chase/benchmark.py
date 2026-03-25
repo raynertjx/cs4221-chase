@@ -18,13 +18,10 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .models import Attribute, DependencySet, FD, MVD, Schema
-from .algorithms import (
-    CandidateKeyFinder,
-    ClosureComputer,
-    MinimalCoverComputer,
-)
-from .chase import ChaseEntailment, ChaseLossless
-
+from .closure import ClosureComputer
+from .minimal_cover import MinimalCoverComputer
+from .decomposition import CandidateKeyFinder, ChaseLossless
+from .entailment import ChaseEntailment
 
 # ── FDGenerator ──────────────────────────────────────────────────────────────
 

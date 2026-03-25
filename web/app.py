@@ -90,11 +90,17 @@ def api_entailment():
         deps = parse_deps(data["fds"])
         schema = Schema(attrs)
 
-        # Parse target FD
-        target_parts = data["target"].split("->")
-        lhs = [a.strip().upper() for a in target_parts[0].split(",") if a.strip()]
-        rhs = [a.strip().upper() for a in target_parts[1].split(",") if a.strip()]
-        target = FD(lhs, rhs)
+        target_str = data["target"]
+        if "->>" in target_str:
+            parts = target_str.split("->>")
+            lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
+            rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
+            target = MVD(lhs, rhs)
+        else:
+            parts = target_str.split("->")
+            lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
+            rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
+            target = FD(lhs, rhs)
 
         result = ChaseEntailment(schema, deps, target).run()
         steps = [{"desc": desc, "tableau": tableau} for desc, tableau in result.steps]
@@ -105,6 +111,7 @@ def api_entailment():
             "attrs": attrs,
         })
     except Exception as e:
+        traceback.print_exc() # Useful for debugging in Docker logs
         return jsonify({"success": False, "error": str(e)})
 
 
