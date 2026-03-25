@@ -40,3 +40,16 @@ def test_fd_implies_mvd():
     target = MVD(["A"], ["B"])
     result = ChaseEntailment(schema, deps, target).run()
     assert result.entailed
+
+if __name__ == "__main__":
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    passed = failed = 0
+    for test_fn in tests:
+        try:
+            test_fn()
+            print(f"  ✓ {test_fn.__name__}")
+            passed += 1
+        except Exception as e:
+            print(f"  ✗ {test_fn.__name__}: {e}")
+            failed += 1
+    print(f"\n  {passed} passed, {failed} failed out of {passed + failed}")

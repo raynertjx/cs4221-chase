@@ -1,11 +1,5 @@
-"""
-web/app.py
-──────────
-Flask web application for the Chase Algorithm Toolkit.
-
-Run:  python web/app.py
-Then open:  http://localhost:8080
-"""
+# web/app.py
+# Flask web application for The Chase
 
 import sys
 import os
@@ -19,14 +13,27 @@ from flask import Flask, render_template, request, jsonify
 from chase import (
     Schema, FD, MVD, DependencySet, TableInstance,
     ClosureComputer, MinimalCoverComputer, CandidateKeyFinder, ProjectionComputer,
-    ChaseEntailment, ChaseLossless, ChaseTableValidator,
+    ChaseLossless, ChaseTableValidator,
     FDDiscoverer, BenchmarkRunner,
 )
+from chase.entailment import ChaseEntailment
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# global error handler
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch any unhandled exception and return JSON instead of HTML."""
+    return jsonify({"success": False, "error": f"{type(e).__name__}: {str(e)}"}), 500
+
+@app.errorhandler(404)
+def handle_404(e):
+    return jsonify({"success": False, "error": "Endpoint not found"}), 404
+
+
+# helpers 
 
 def parse_attrs(text: str) -> list[str]:
     return [a.strip().upper() for a in text.split(",") if a.strip()]
@@ -55,7 +62,7 @@ def parse_table(text: str, attr_names: list[str]) -> list[dict]:
     return rows
 
 
-# ── Routes ───────────────────────────────────────────────────────────────────
+# routes 
 
 @app.route("/")
 def index():
@@ -90,6 +97,7 @@ def api_entailment():
         deps = parse_deps(data["fds"])
         schema = Schema(attrs)
 
+        # Parse target — detect MVD (->>) vs FD (->)
         target_str = data["target"]
         if "->>" in target_str:
             parts = target_str.split("->>")
@@ -111,7 +119,6 @@ def api_entailment():
             "attrs": attrs,
         })
     except Exception as e:
-        traceback.print_exc() # Useful for debugging in Docker logs
         return jsonify({"success": False, "error": str(e)})
 
 
