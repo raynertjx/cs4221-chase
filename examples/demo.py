@@ -2,19 +2,20 @@
 examples/demo.py
 ────────────────
 Full demonstration of the Chase toolkit.
-Covers every major feature + pratik2358 format compatibility.
+Covers every major feature 
 
 Run:  python examples/demo.py
 """
 
 import sys, os
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from chase import (
     Schema, FD, MVD, DependencySet, TableInstance,
     ClosureComputer, MinimalCoverComputer, CandidateKeyFinder, ProjectionComputer,
     ChaseEntailment, ChaseLossless, ChaseTableValidator,
-    FDDiscoverer, BenchmarkRunner,
+    FDDiscoverer, BenchmarkRunner, ThreeNFDecomposer, BCNFDecomposer,
 )
 
 
@@ -25,12 +26,11 @@ def divider(title: str) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-#  1. MODELS – pratik2358 format compatibility
+#  1. MODELS 
 # ═══════════════════════════════════════════════════════════════════════════
 
 divider("1. Creating dependencies (pratik2358-compatible format)")
 
-# Format from pratik2358/fucntional_dep
 pratik_fds = [
     ({'A'}, {'A', 'B', 'C'}),
     ({'A', 'B'}, {'A'}),
@@ -152,6 +152,30 @@ deps_mvd = DependencySet.from_strings(["A ->> B", "A -> C"])
 decomp_mvd = [Schema(["A", "B"]), Schema(["A", "C", "D"])]
 result_mvd = ChaseLossless(schema4, deps_mvd, decomp_mvd).run()
 print(f"  {result_mvd}")
+
+divider("6c. BCNF Decomposition")
+schema6 = Schema(["A", "B", "C", "D", "E", "F"])
+deps6 = DependencySet.from_strings([
+    "C -> E",
+    "E -> C",
+    "D -> C, E",
+    "B, C -> A, D",
+    "B, E -> A, D"
+])
+decomposer = BCNFDecomposer(schema6, deps6)
+result6 = decomposer.decompose()
+print(f"  Fragments:")
+for frag in result6.fragments:
+    print(f"    {frag}")
+print(f"  Dependency preserved? {result6.dependency_preserved}")
+
+divider("6d. 3NF Decomposition")
+decomposer_3nf = ThreeNFDecomposer(schema6, deps6)
+result_3nf = decomposer_3nf.decompose()
+print(f"  Fragments:")
+for frag in result_3nf.fragments:
+    print(f"    {frag}")
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════
