@@ -21,6 +21,18 @@
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'DM Sans', sans-serif;
   }
+  body[data-theme="light"] {
+    --accent: #D62828;
+    --accent2: #F4A261;
+    --red: #D62828;
+    --yellow: #FCBF49;
+    --text: #1F2937;
+    --dim: #6B7280;
+    --bg: #F7F7F5;
+    --surface: #FFFFFF;
+    --surface2: #F8FAFC;
+    --border: #D1D5DB;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
   ::selection { background: rgba(60,255,176,.25); }
@@ -30,10 +42,19 @@
   /* Layout */
   .header { border-bottom: 1px solid var(--border); padding: 22px 28px 16px;
     background: linear-gradient(180deg, rgba(60,255,176,.02), transparent); }
+  body[data-theme="light"] .header { background: linear-gradient(180deg, rgba(229,107,111,.08), transparent); }
+  .header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .header-copy { min-width: 0; }
   .header h1 { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); display: inline; }
   .header .badge { font-family: var(--mono); font-size: 10px; color: var(--accent2);
     background: rgba(123,97,255,.12); padding: 2px 8px; border-radius: 4px; margin-left: 10px; }
+  body[data-theme="light"] .header .badge { background: rgba(244,162,97,.14); }
   .header p { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-top: 4px; letter-spacing: .4px; }
+  .theme-toggle { padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+    color: var(--text); cursor: pointer; font-family: var(--mono); font-size: 10px; font-weight: 600;
+    letter-spacing: .8px; text-transform: uppercase; transition: border-color .15s, color .15s, background .15s; }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .theme-icon { font-size: 14px; line-height: 1; display: block; }
   .container { max-width: 960px; margin: 0 auto; padding: 20px 28px; }
 
   /* Tabs */
@@ -63,6 +84,12 @@
   .field input, .field textarea { width: 100%; padding: 10px 12px; background: rgba(0,0,0,.4);
     border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--mono);
     font-size: 12px; outline: none; resize: vertical; }
+  body[data-theme="light"] .field input,
+  body[data-theme="light"] .field textarea {
+    background: #F3F4F6;
+    border-color: #D1D5DB;
+    color: #1F2937;
+  }
   .field input { height: 38px; }
   .field input:focus, .field textarea:focus { border-color: var(--accent); }
 
@@ -70,6 +97,7 @@
   .run-btn { width: 100%; padding: 13px; background: var(--accent); color: #080B12; border: none;
     border-radius: 8px; font-family: var(--mono); font-size: 13px; font-weight: 700; cursor: pointer;
     letter-spacing: 1.5px; text-transform: uppercase; transition: filter .15s; }
+  body[data-theme="light"] .run-btn { background: #E56B6F; color: #FFFFFF; }
   .run-btn:hover { filter: brightness(1.12); }
   .run-btn:disabled { opacity: .5; cursor: wait; }
 
@@ -113,6 +141,7 @@
   /* FD badges */
   .fd-badge { display: inline-block; padding: 4px 10px; background: var(--surface2); border: 1px solid var(--border);
     border-radius: 4px; font-family: var(--mono); font-size: 12px; color: var(--text); margin: 3px; }
+  body[data-theme="light"] .fd-badge { background: #F1F5F9; border-color: #E5E7EB; }
 
   /* Key badges */
   .key-badge { padding: 8px 16px; background: rgba(60,255,176,.06); border: 1px solid rgba(60,255,176,.15);
@@ -148,9 +177,16 @@
 
 <div class="header">
   <div class="container" style="padding:0">
-    <h1>THE CHASE</h1>
-    <span class="badge">v2.0 · WEB</span>
-    <p>CS4221 Database Tuning · NUS · FD &amp; MVD Chase Algorithm</p>
+    <div class="header-top">
+      <div class="header-copy">
+        <h1>THE CHASE</h1>
+        <span class="badge">v2.0 · WEB</span>
+        <p>CS4221 Database Tuning · NUS · FD &amp; MVD Chase Algorithm</p>
+      </div>
+      <button class="theme-toggle" id="themeToggle" type="button" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle theme">
+        <span class="theme-icon" id="themeIcon">☀</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -209,6 +245,7 @@ B -> C</textarea>
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
 let currentTab = 'table_check';
+const THEME_KEY = 'chase-theme';
 
 const EXAMPLES = {
   tableCheck: { attrs: 'A, B, C', fds: 'A -> B\nA -> C\nB -> C', table: '1, 2, 3\n1, 2, 4\n2, 3, 3' },
@@ -243,6 +280,27 @@ const RIGHT_PANELS = {
     <div class="info-box"><strong>FD Discovery</strong><br>Discover minimal FDs from a table using partition refinement.</div>`,
   bench: `<div class="info-box"><strong>Benchmark</strong><br>Time closure, minimal cover, entailment, and candidate keys on random FD sets of increasing size. Also runs FD-only vs FD+MVD ablation.</div>`,
 };
+
+// ── Theme ───────────────────────────────────────────────────────────────────
+function applyTheme(theme) {
+  document.body.dataset.theme = theme;
+  const btn = document.getElementById('themeToggle');
+  const icon = document.getElementById('themeIcon');
+  if (icon) icon.textContent = theme === 'light' ? '☾' : '☀';
+  if (btn) btn.setAttribute('aria-label', theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+}
+
+function toggleTheme() {
+  const next = document.body.dataset.theme === 'light' ? 'dark' : 'light';
+  localStorage.setItem(THEME_KEY, next);
+  applyTheme(next);
+}
+
+function getInitialTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'light' || saved === 'dark') return saved;
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
 // ── Tab switching ───────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
@@ -569,6 +627,7 @@ function renderDataTable(rows, attrs) {
 }
 
 // Init right panel
+applyTheme(getInitialTheme());
 document.getElementById('right-panel').innerHTML = RIGHT_PANELS['table_check'];
 </script>
 </body>
