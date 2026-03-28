@@ -87,31 +87,37 @@ class ChaseEntailment:
             for mvd in self.deps.mvds:
                 mvd_lhs = [a.name for a in mvd.lhs]
                 mvd_rhs = [a.name for a in mvd.rhs]
+
+                mvd_changed = True
+
+                while mvd_changed:
+                    mvd_changed = False
                 
-                for i in range(len(rows)):
-                    for j in range(len(rows)):
-                        if i == j: continue
-                        
-                        # if rows match on LHS, swap RHS values
-                        if all(rows[i][a].symbol == rows[j][a].symbol for a in mvd_lhs):
-                            # Create a new row: take Y from row i, and everything else from row j
-                            new_row_data = {}
-                            for a in names:
-                                if a in mvd_rhs:
-                                    new_row_data[a] = rows[i][a]
-                                else:
-                                    new_row_data[a] = rows[j][a]
+                    for i in range(len(rows)):
+                        for j in range(i+1, len(rows)):
+                            # if rows match on LHS, swap RHS values
+                            if not all(rows[i][a].symbol == rows[j][a].symbol for a in mvd_lhs):
+                                continue
                             
-                            new_row = TableauRow(new_row_data)
-                            
-                            # add if this specific combination doesn't exist yet
-                            if not any(all(new_row[a].symbol == existing[a].symbol for a in names) for existing in rows):
-                                rows.append(new_row)
-                                steps.append((f"Apply MVD {mvd}", _tableau_to_dicts(rows, names)))
-                                changed = True
-                                break
-                    if changed: break
-                if changed: break
+                            for src_rhs, src_rest in [(j, i), (i, j)]:
+                                new_row_data = {}
+                                for a in names:
+                                    if a in mvd_rhs:
+                                        new_row_data[a] = rows[src_rhs][a]
+                                    else:
+                                        new_row_data[a] = rows[src_rest][a]
+                                
+                                new_row = TableauRow(new_row_data)
+                                
+                                # add if this specific combination doesn't exist yet
+                                if not any(all(new_row[a].symbol == existing[a].symbol for a in names) for existing in rows):
+                                    rows.append(new_row)
+                                    steps.append((f"Apply MVD {mvd}", _tableau_to_dicts(rows, names)))
+                                    mvd_changed = True
+                                    changed = True
+
+                        if mvd_changed: break
+                    if mvd_changed: break
 
         # check if any row consist entirely of distinguished variables
         entailed = self._check_entailment(rows, names)
