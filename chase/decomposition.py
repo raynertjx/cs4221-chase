@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Dict, FrozenSet, List, Tuple
-
+from .minimal_cover import MinimalCoverComputer
 from .models import Attribute, DependencySet, FD, Schema, TableauCell, TableauRow
 from .closure import ClosureComputer
 
@@ -121,11 +121,8 @@ class ProjectionComputer:
                 if head:
                     projected.append(FD(lhs, head))
 
-        # We need MinimalCoverComputer to minimise this, but to avoid circular imports 
-        # for your teammates right now, we will just return the raw projected set.
-        # Branch 4 can hook up the minimal cover logic later!
         ds = DependencySet(projected)
-        return ds
+        return MinimalCoverComputer(ds).compute().result
 
 
 # ── ChaseLossless ────────────────────────────────────────────────────────────

@@ -251,6 +251,34 @@ def api_benchmark():
                 "num_fds": e.num_fds,
                 "num_attrs": e.num_attrs,
                 "time_ms": round(e.time_ms, 3),
+                "num_rows": e.num_rows,
+                "stats": {k: round(v, 3) for k, v in e.stats.items()},
+            })
+
+        row_scaling = runner.run_row_scaling()
+        row_entries = []
+        for e in row_scaling.entries:
+            row_entries.append({
+                "label": e.label,
+                "operation": e.operation,
+                "num_fds": e.num_fds,
+                "num_attrs": e.num_attrs,
+                "num_rows": e.num_rows,
+                "time_ms": round(e.time_ms, 3),
+                "stats": {k: round(v, 3) for k, v in e.stats.items()},
+            })
+
+        attr_scaling = runner.run_attr_scaling()
+        attr_entries = []
+        for e in attr_scaling.entries:
+            attr_entries.append({
+                "label": e.label,
+                "operation": e.operation,
+                "num_fds": e.num_fds,
+                "num_attrs": e.num_attrs,
+                "num_rows": e.num_rows,
+                "time_ms": round(e.time_ms, 3),
+                "stats": {k: round(v, 3) for k, v in e.stats.items()},
             })
 
         ablation = runner.run_ablation()
@@ -260,12 +288,17 @@ def api_benchmark():
                 "label": e.label,
                 "operation": e.operation,
                 "num_fds": e.num_fds,
+                "num_attrs": e.num_attrs,
+                "num_rows": e.num_rows,
                 "time_ms": round(e.time_ms, 3),
+                "stats": {k: round(v, 3) for k, v in e.stats.items()},
             })
 
         return jsonify({
             "success": True,
             "entries": entries,
+            "row_scaling": row_entries,
+            "attr_scaling": attr_entries,
             "ablation": ablation_entries,
         })
     except Exception as e:
