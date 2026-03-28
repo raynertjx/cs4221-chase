@@ -42,8 +42,10 @@ from .decomposition import (
     CandidateKeyFinder,
     CandidateKeyResult,
     ProjectionComputer,
-    ChaseLossless,
-    ChaseLosslessResult,
+    BCNFDecomposer,
+    BCNFDecompositionResult,
+    ThreeNFDecomposer,
+    ThreeNFDecompositionResult,
 )
 
 # 5. Minimal Cover (Branch 4)
@@ -78,15 +80,17 @@ __all__ = [
     "Attribute", "Schema", "FD", "MVD", "Dependency", "DependencySet",
     "TableInstance", "TableauCell", "TableauRow", "Tableau",
     
-    # Algorithms (Now split!)
+    # Algorithms 
     "ClosureComputer", "ClosureResult",
     "MinimalCoverComputer", "MinimalCoverResult",
     "CandidateKeyFinder", "CandidateKeyResult",
     "ProjectionComputer",
     
-    # Chase (Now split!)
+    # Chase 
     "ChaseEntailment", "ChaseEntailmentResult",
     "ChaseLossless", "ChaseLosslessResult",
+    "BCNFDecomposer", "BCNFDecompositionResult",
+    "ThreeNFDecomposer", "ThreeNFDecompositionResult",
     
     # Discovery
     "FDDiscoverer", "DiscoveryResult",

@@ -20,9 +20,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .models import Attribute, DependencySet, FD, MVD, Schema, TableInstance
 from .closure import ClosureComputer
 from .minimal_cover import MinimalCoverComputer
-from .decomposition import CandidateKeyFinder, ChaseLossless
+from .decomposition import CandidateKeyFinder
 from .entailment import ChaseEntailment
-from .chase import ChaseTableValidator
+from .chase import ChaseTableValidator, ChaseLossless
 from .discovery import FDDiscoverer
 
 # ── FDGenerator ──────────────────────────────────────────────────────────────
