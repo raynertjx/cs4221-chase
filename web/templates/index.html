@@ -12,6 +12,10 @@
     --accent2: #7B61FF;
     --red: #FF5C5C;
     --yellow: #FFD93D;
+    --cyan: #00D9FF;
+    --orange: #FF9D3D;
+    --magenta: #FF1493;
+    --lime: #32CD32;
     --text: #D8DEE9;
     --dim: #5E6B80;
     --bg: #080B12;
@@ -26,6 +30,10 @@
     --accent2: #F4A261;
     --red: #D62828;
     --yellow: #FCBF49;
+    --cyan: #0099CC;
+    --orange: #FF6B35;
+    --magenta: #C41E8E;
+    --lime: #22B14C;
     --text: #1F2937;
     --dim: #6B7280;
     --bg: #F7F7F5;
@@ -298,7 +306,7 @@ const RIGHT_PANELS = {
     <div class="field"><label>Table Rows (comma-separated per row)</label>
     <textarea id="discoverTable" rows="4" placeholder="Alice, CS, Prof X&#10;Bob, CS, Prof X">Alice, CS, Prof X\nBob, CS, Prof X\nCharlie, Math, Prof Y\nDiana, Math, Prof Y</textarea></div>
     <div class="info-box"><strong>FD Discovery</strong><br>Discover minimal FDs from a table using partition refinement.</div>`,
-  bench: `<div class="info-box"><strong>Benchmark</strong><br>Time closure, minimal cover, entailment, and candidate keys on random FD sets of increasing size. Also runs FD-only vs FD+MVD ablation.</div>`,
+  bench: `<div class="info-box"><strong>Benchmark</strong><br>Time closure, minimal cover, entailment, candidate keys, BCNF, and 3NF decompositions on random FD sets of increasing size. Also runs FD-only vs FD+MVD ablation.</div>`,
 };
 
 // ── Theme ───────────────────────────────────────────────────────────────────
@@ -620,7 +628,7 @@ function renderBenchmark(data) {
   html += '<th>Label</th><th>Operation</th><th>#FDs</th><th>#Rows</th><th>ms/op</th>';
   html += '</tr></thead><tbody>';
   for (const e of data.entries) {
-    const color = {closure:'var(--accent)',min_cover:'var(--yellow)',entailment:'var(--accent2)',cand_keys:'var(--text)'}[e.operation]||'var(--text)';
+    const color = {closure:'var(--accent)',min_cover:'var(--yellow)',entailment:'var(--accent2)',cand_keys:'var(--red)',discover:'var(--cyan)',table_check:'var(--orange)',bcnf:'var(--magenta)'}[e.operation]||'var(--text)';
     html += `<tr><td style="text-align:left">${e.label}</td><td style="color:${color}">${e.operation}</td>`;
     html += `<td>${e.num_fds}</td><td>${e.num_rows ?? '-'}</td><td style="color:${color}">${e.time_ms}</td></tr>`;
   }

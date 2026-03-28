@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from .models import Attribute, DependencySet, FD, MVD, Schema, TableInstance
 from .closure import ClosureComputer
 from .minimal_cover import MinimalCoverComputer
-from .decomposition import CandidateKeyFinder
+from .decomposition import CandidateKeyFinder, BCNFDecomposer, ThreeNFDecomposer
 from .entailment import ChaseEntailment
 from .chase import ChaseTableValidator, ChaseLossless
 from .discovery import FDDiscoverer
@@ -235,6 +235,16 @@ class BenchmarkRunner:
             ckf = CandidateKeyFinder(self.schema, deps)
             t = self._time_op(lambda: ckf.compute(), max(5, self.iterations // 10))
             result.add(TimingEntry(label, n_fds, n_attrs, "cand_keys", t, max(5, self.iterations // 10)))
+
+            # BCNF decomposition
+            bcnf = BCNFDecomposer(self.schema, deps)
+            t = self._time_op(lambda: bcnf.decompose(), max(5, self.iterations // 10))
+            result.add(TimingEntry(label, n_fds, n_attrs, "bcnf", t, max(5, self.iterations // 10)))
+
+            # 3NF decomposition
+            threenf = ThreeNFDecomposer(self.schema, deps)
+            t = self._time_op(lambda: threenf.decompose(), max(5, self.iterations // 10))
+            result.add(TimingEntry(label, n_fds, n_attrs, "3nf", t, max(5, self.iterations // 10)))
 
         return result
 
