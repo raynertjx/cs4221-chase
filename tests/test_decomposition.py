@@ -1,6 +1,8 @@
-# tests/test_decomposition.py
+from unittest import result
+import pytest
 from chase.models import Schema, DependencySet
-from chase.decomposition import CandidateKeyFinder, ChaseLossless
+from chase.decomposition import CandidateKeyFinder, BCNFDecomposer, ThreeNFDecomposer
+from chase.chase import ChaseLossless
 
 def test_candidate_keys_basic():
     schema = Schema(["A", "B", "C"])
@@ -26,3 +28,58 @@ def test_lossless_negative():
     schemas = [Schema(["A", "C"]), Schema(["B", "C"])]
     result = ChaseLossless(schema, deps, schemas).run()
     assert not result.lossless
+
+def test_bcnf_decomposition():
+    schema = Schema(["A", "B", "C", "D", "E", "F"])
+    deps = DependencySet.from_strings([
+        "C -> E",
+        "E -> C",
+        "D -> C, E",
+        "B, C -> A, D",
+        "B, E -> A, D"
+    ])
+
+    decomposer = BCNFDecomposer(schema, deps)
+    result = decomposer.decompose()
+
+    expected_fragment_sets = [
+        {"C", "E"},
+        {"C", "D"},
+        {"A", "B", "D"},
+        {"B", "D", "F"}
+    ]
+    
+    actual_fragment_sets = [set(s.names) for s in result.fragments]
+
+    for expected in expected_fragment_sets:
+        assert expected in actual_fragment_sets
+
+    assert not result.dependency_preserved
+
+def test_3nf_decomposition():
+    schema = Schema(["A", "B", "C", "D", "E", "F"])
+    deps = DependencySet.from_strings([
+        "C -> E",
+        "E -> C",
+        "D -> C, E",
+        "B, C -> A, D",
+        "B, E -> A, D"
+    ])
+
+    decomposer = ThreeNFDecomposer(schema, deps)
+    result = decomposer.decompose()
+
+    actual_fragments = [set(names) for names in result.fragment_names]
+
+    assert {"C", "E"} in actual_fragments
+    assert {"B", "C", "F"} in actual_fragments
+    assert (
+        {"A", "B", "C", "D"} in actual_fragments
+        or {"A", "B", "D", "E"} in actual_fragments
+    )
+
+    assert result.key_added
+    assert result.key_fragment is not None
+    assert set(result.key_fragment.names) == {"B", "C", "F"}
+
+

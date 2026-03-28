@@ -65,6 +65,13 @@
   .tab:hover { border-color: var(--accent); color: var(--accent); }
   .tab.active { background: rgba(60,255,176,.1); border-color: rgba(60,255,176,.3); color: var(--accent); font-weight: 600; }
 
+  /* Type selector buttons */
+  .type-btn { padding: 9px 16px; background: transparent; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--dim); cursor: pointer; font-family: var(--mono); font-size: 11px; font-weight: 400;
+    letter-spacing: .3px; transition: all .15s; text-transform: uppercase; white-space: nowrap; flex: 1; }
+  .type-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .type-btn.active { background: rgba(60,255,176,.1); border-color: rgba(60,255,176,.3); color: var(--accent); font-weight: 600; }
+
   /* Examples */
   .examples { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
   .examples span { font-family: var(--mono); font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
@@ -200,6 +207,7 @@
     <button class="tab" data-tab="mincover">▼ Min Cover</button>
     <button class="tab" data-tab="closure">⁺ Closure</button>
     <button class="tab" data-tab="keys">⌗ Keys</button>
+    <button class="tab" data-tab="decompositions">◈ Decompose</button>
     <button class="tab" data-tab="discover">🔍 Discover</button>
     <button class="tab" data-tab="bench">⚡ Bench</button>
   </div>
@@ -210,6 +218,8 @@
     <button class="ex-btn" onclick="loadExample('tableCheck')">Table→FD</button>
     <button class="ex-btn" onclick="loadExample('entailment')">Entailment</button>
     <button class="ex-btn" onclick="loadExample('lossless')">Lossless</button>
+    <button class="ex-btn" onclick="loadExample('bcnf')">BCNF</button>
+    <button class="ex-btn" onclick="loadExample('3nf')">3NF</button>
     <button class="ex-btn" onclick="loadExample('mvd')">MVD</button>
     <button class="ex-btn" onclick="loadExample('university')">University</button>
   </div>
@@ -252,6 +262,8 @@ const EXAMPLES = {
   entailment: { attrs: 'A, B, C, D', fds: 'A,B -> C\nC -> D\nD -> A', target: 'A,B -> D' },
   lossless:   { attrs: 'A, B, C, D, E', fds: 'A -> B,C\nC -> D\nD -> E', decomp: '{A,B,C}\n{C,D}\n{D,E}' },
   mvd:        { attrs: 'A, B, C, D', fds: 'A ->> B\nA -> C', decomp: '{A,B}\n{A,C,D}' },
+  bcnf:       { attrs: 'A, B, C, D', fds: 'A -> B\nB -> C\nC -> D\nD -> A' },
+  '3nf':      { attrs: 'S, C, I, G', fds: 'S,C -> G\nC -> I\nI -> C' },
   university: { attrs: 'S, C, I, G, R', fds: 'S,C -> G\nC -> I\nI -> C\nS,C -> R', decomp: '{S,C,G,R}\n{C,I}' },
 };
 
@@ -274,6 +286,14 @@ const RIGHT_PANELS = {
     <input id="closureInput" value="A, B" placeholder="A, B"></div>
     <div class="info-box"><strong>Attribute Closure</strong><br>Compute X⁺ and check if it's a superkey.</div>`,
   keys: `<div class="info-box"><strong>Candidate Keys</strong><br>Find all minimal attribute sets whose closure covers the full schema.</div>`,
+  decompositions: `
+    <div class="field"><label>Decomposition Type</label>
+    <div style="display:flex;gap:8px">
+      <button class="type-btn active" id="decompType-bcnf" data-type="bcnf" onclick="selectDecompType('bcnf')">BCNF</button>
+      <button class="type-btn" id="decompType-3nf" data-type="3nf" onclick="selectDecompType('3nf')">3NF</button>
+    </div>
+    </div>
+    <div class="info-box" id="decompInfo"><strong>BCNF Decomposition</strong><br>Decompose into Boyce-Codd Normal Form (BCNF): every determinant is a candidate key.</div>`,
   discover: `
     <div class="field"><label>Table Rows (comma-separated per row)</label>
     <textarea id="discoverTable" rows="4" placeholder="Alice, CS, Prof X&#10;Bob, CS, Prof X">Alice, CS, Prof X\nBob, CS, Prof X\nCharlie, Math, Prof Y\nDiana, Math, Prof Y</textarea></div>
@@ -302,6 +322,9 @@ function getInitialTheme() {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
+// ── Global state ───────────────────────────────────────────────────────────
+let currentDecompType = 'bcnf';
+
 // ── Tab switching ───────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -309,14 +332,40 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     currentTab = btn.dataset.tab;
     document.getElementById('right-panel').innerHTML = RIGHT_PANELS[currentTab] || '';
+    // Re-attach decomposition type selector handlers if needed
+    if (currentTab === 'decompositions') {
+      setTimeout(() => updateDecompInfo(), 50);
+    }
     document.getElementById('results').innerHTML = '';
     document.getElementById('error').classList.add('hidden');
     // Update run button text
     const labels = { table_check:'FD Check', entailment:'Chase', lossless:'Chase',
-      mincover:'Min Cover', closure:'Closure', keys:'Find Keys', discover:'Discover', bench:'Benchmark' };
+      mincover:'Min Cover', closure:'Closure', keys:'Find Keys', decompositions:'Decompose', discover:'Discover', bench:'Benchmark' };
     document.getElementById('runBtn').textContent = '▶ Run ' + (labels[currentTab] || 'Chase');
   });
 });
+
+// ── Decomposition type selector ──────────────────────────────────────────────
+function selectDecompType(type) {
+  currentDecompType = type;
+  updateDecompInfo();
+}
+
+function updateDecompInfo() {
+  const buttons = document.querySelectorAll('.type-btn');
+  buttons.forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector(`[id="decompType-${currentDecompType}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+  
+  const infoBox = document.getElementById('decompInfo');
+  if (infoBox) {
+    if (currentDecompType === 'bcnf') {
+      infoBox.innerHTML = '<strong>BCNF Decomposition</strong><br>Decompose into Boyce-Codd Normal Form (BCNF): every determinant is a candidate key.';
+    } else {
+      infoBox.innerHTML = '<strong>3NF Decomposition</strong><br>Decompose into Third Normal Form (3NF): every non-key attribute is fully dependent on each candidate key.';
+    }
+  }
+}
 
 // ── Load example ────────────────────────────────────────────────────────────
 function loadExample(key) {
@@ -380,6 +429,10 @@ async function run() {
       case 'keys':
         data = await apiCall('keys', { attrs, fds });
         renderKeys(data);
+        break;
+      case 'decompositions':
+        data = await apiCall('decomposition', { attrs, fds, type: currentDecompType });
+        renderDecomposition(data);
         break;
       case 'discover':
         data = await apiCall('discover', { attrs, table: gv('discoverTable') });
@@ -525,6 +578,24 @@ function renderKeys(data) {
   if (data.prime_attributes.length) {
     html += `<div style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--dim)">`;
     html += `Prime attributes: {${data.prime_attributes.join(', ')}}</div>`;
+  }
+  html += '</div>';
+  document.getElementById('results').innerHTML = html;
+}
+
+function renderDecomposition(data) {
+  if (!data.success) return;
+  const typeTitle = currentDecompType === 'bcnf' ? 'BCNF' : '3NF';
+  let html = `<div class="result-box"><div class="result-title">${typeTitle} Decomposition Result</div>`;
+  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">';
+  for (const frag of data.fragments) {
+    html += `<div class="key-badge">{${frag.join(', ')}}</div>`;
+  }
+  html += '</div>';
+  if (data.dependency_preserved !== null && data.dependency_preserved !== undefined) {
+    html += `<div style="margin-top:12px;font-family:var(--mono);font-size:11px;color:${data.dependency_preserved?'var(--accent)':'var(--red)'}">`;
+    html += data.dependency_preserved ? '✓ Dependency Preserved' : '✗ Dependencies may not be preserved';
+    html += '</div>';
   }
   html += '</div>';
   document.getElementById('results').innerHTML = html;

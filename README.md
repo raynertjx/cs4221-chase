@@ -20,6 +20,7 @@ python web/app.py
 # 4. Run tests
 python3 -m pytest -v
 python3 -m pytest tests/test_entailment.py -v
+pytest tests/
 
 # 5. Spin up docker
 docker rm -f $(docker ps -aq)
