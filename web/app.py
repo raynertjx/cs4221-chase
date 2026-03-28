@@ -15,6 +15,7 @@ from chase import (
     ClosureComputer, MinimalCoverComputer, CandidateKeyFinder, ProjectionComputer,
     ChaseLossless, ChaseTableValidator,
     FDDiscoverer, BenchmarkRunner,
+    BCNFDecomposer, ThreeNFDecomposer,
 )
 from chase.entailment import ChaseEntailment
 
@@ -143,6 +144,31 @@ def api_lossless():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route("/api/decomposition", methods=["POST"])
+def api_decomposition():
+    try:
+        data = request.json
+        attrs = parse_attrs(data["attrs"])
+        deps = parse_deps(data["fds"])
+        schema = Schema(attrs)
+
+        # Determine decomposition type
+        decomp_type = data.get("type", "bcnf")
+        if decomp_type == "bcnf":
+            decomposer = BCNFDecomposer(schema, deps)
+        elif decomp_type == "3nf":
+            decomposer = ThreeNFDecomposer(schema, deps)
+        else:
+            raise ValueError("Invalid decomposition type")
+
+        result = decomposer.decompose()
+        return jsonify({
+            "success": True,
+            "fragments": result.fragment_names,
+            "dependency_preserved": result.dependency_preserved if hasattr(result, 'dependency_preserved') else None,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 @app.route("/api/mincover", methods=["POST"])
 def api_mincover():

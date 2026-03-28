@@ -57,6 +57,7 @@ from .minimal_cover import (
 # 6. Discovery & Validation
 from .chase import (
     ChaseTableValidator,
+    ChaseLossless,
 )
 
 from .discovery import (
