@@ -138,11 +138,11 @@ deps = DependencySet.from_tuples([
 
 ## Web UI
 
-The web interface at `http://localhost:5000` provides **10 tabs** — one for each feature listed above. The UI includes:
+The web interface at `http://localhost:5000` provides **9 tabs** — one for each feature listed above. The UI includes:
 
 - **Step-by-step tableau playback** for Chase entailment and lossless join tests, allowing users to observe how symbols are equated or rows are generated at each step.
 - **Pre-loaded examples** from standard textbook cases and a University schema for quick exploration.
-- **Interactive dark-themed interface** designed for exploring database dependency concepts.
+- **Interactive dark or light-themed interface** designed for exploring database dependency concepts.
 
 ---
 
