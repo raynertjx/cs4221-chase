@@ -101,6 +101,14 @@ def _tableau_to_dicts(rows: List[TableauRow], attrs: List[str]) -> List[Dict[str
     """Serialise a list of TableauRow into plain dicts for snapshots."""
     return [{a: r.cells[a].symbol for a in attrs} for r in rows]
 
+def make_subscript(num: int) -> str:
+    subscript_digits = "₀₁₂₃₄₅₆₇₈₉"
+    return "".join(subscript_digits[int(d)] for d in str(num))
+
+def is_tableau_lossless(rows: List[TableauRow], attrs: List[str]) -> bool:
+    """Check if any row is all-distinguished."""
+    return any(all(r.cells[a].distinguished for a in attrs) for r in rows)
+
 
 # ── ChaseEntailment ──────────────────────────────────────────────────────────
 
@@ -219,11 +227,12 @@ class ChaseLossless:
         for i, rel in enumerate(self.decomposition):
             rel_names = set(rel.names)
             row = TableauRow({})
+            row_idx = i + 1
             for a in names:
                 if a in rel_names:
-                    row[a] = TableauCell(f"a_{a}", distinguished=True)
+                    row[a] = TableauCell(f"α", distinguished=True)
                 else:
-                    row[a] = TableauCell(f"b_{i}{a}", distinguished=False)
+                    row[a] = TableauCell(f"{a.lower()}{make_subscript(row_idx)}", distinguished=False)
             rows.append(row)
 
         steps: List[Tuple[str, List[Dict[str, str]]]] = []
@@ -261,6 +270,15 @@ class ChaseLossless:
 
                 if fd_changed:
                     steps.append((f"Apply {fd}", _tableau_to_dicts(rows, names)))
+
+                if is_tableau_lossless(rows, names):
+                    tag = f"Lossless: True"
+                    steps.append((tag, _tableau_to_dicts(rows, names)))
+                    return ChaseLosslessResult(
+                        decomposition=self.decomposition,
+                        lossless=True,
+                            steps=steps,
+                        )
 
             # ── MVD row-generation rules ──
             for mvd in self.deps.mvds:
@@ -312,14 +330,20 @@ class ChaseLossless:
                         _tableau_to_dicts(rows, names),
                     ))
 
-            # Early exit
-            if any(
-                all(r[a].distinguished for a in names) for r in rows
-            ):
-                break
+                if is_tableau_lossless(rows, names):
+                    tag = "Lossless: True"
+                    steps.append((tag, _tableau_to_dicts(rows, names)))
+                    return ChaseLosslessResult(
+                        decomposition=self.decomposition,
+                        lossless=True,
+                    steps=steps,
+                )
+
+            # if any(all(r[a].distinguished for a in names) for r in rows):
+            #     break
 
         lossless = any(all(r[a].distinguished for a in names) for r in rows)
-        tag = "✓ Lossless" if lossless else "✗ Not lossless"
+        tag = f"Lossless" if lossless else "Not Lossless"
         steps.append((tag, _tableau_to_dicts(rows, names)))
 
         return ChaseLosslessResult(
