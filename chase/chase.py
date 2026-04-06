@@ -343,7 +343,7 @@ class ChaseLossless:
             #     break
 
         lossless = any(all(r[a].distinguished for a in names) for r in rows)
-        tag = f"Lossless: True" if lossless else "Lossless: False"
+        tag = f"Lossless" if lossless else "Not Lossless"
         steps.append((tag, _tableau_to_dicts(rows, names)))
 
         return ChaseLosslessResult(
