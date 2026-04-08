@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional 
 
 from .models import Attribute, DependencySet, FD, MVD, Schema, TableInstance
 from .entailment import ChaseEntailment
@@ -127,7 +127,7 @@ class BenchmarkRunner:
     fd_sizes   : list of int
         Number of FDs to generate at each scale.
     iterations : int
-        Repetitions per measurement for stable timing.
+        Number of unique dependency sets generated per measurement for stable statistical averaging.
     seed       : int | None
         RNG seed for reproducibility.
 
@@ -153,14 +153,6 @@ class BenchmarkRunner:
         self.gen = FDGenerator(attr_names, seed=seed)
         self.rng = random.Random(seed)
 
-    def _time_op(self, fn: Callable[[], Any], iters: int) -> float:
-        """Return average time in ms."""
-        start = time.perf_counter()
-        for _ in range(iters):
-            fn()
-        elapsed = (time.perf_counter() - start) / iters * 1000
-        return elapsed
-
     def _attr_names_for(self, count: int) -> List[str]:
         if count <= len(self.attr_names):
             return self.attr_names[:count]
@@ -182,55 +174,57 @@ class BenchmarkRunner:
             rows.append(row)
         return TableInstance(Schema(attrs), rows)
 
-    def _measure_lossless(
-        self,
-        schema: Schema,
-        deps: DependencySet,
-        decomp: List[Schema],
-        iterations: int,
-    ) -> Tuple[float, float, float]:
-        start = time.perf_counter()
-        total_steps = 0.0
-        total_rows = 0.0
-
-        for _ in range(iterations):
-            result = ChaseLossless(schema, deps, decomp).run()
-            total_steps += len(result.steps)
-            total_rows += len(result.steps[-1][1]) if result.steps else 0
-
-        elapsed = (time.perf_counter() - start) / iterations * 1000
-        return elapsed, total_steps / iterations, total_rows / iterations
-
     def run_all(self) -> BenchmarkResult:
         """Run Chase-only benchmarks across dependency-set sizes."""
         result = BenchmarkResult()
         n_attrs = len(self.attr_names)
+        num_samples = self.iterations
 
         for n_fds in self.fd_sizes:
-            deps = self.gen.generate_fds(n_fds)
             label = f"|Σ|={n_fds} / |U|={n_attrs}"
-
             target = FD(list(self.schema)[:2], [list(self.schema)[-1]])
-            ce = ChaseEntailment(self.schema, deps, target)
-            t = self._time_op(lambda: ce.run(), self.iterations)
-            result.add(TimingEntry(label, n_fds, n_attrs, "entailment", t, self.iterations))
+            
+            # --- Entailment Benchmark ---
+            total_entailment_time = 0.0
+            
+            for _ in range(num_samples):
+                deps = self.gen.generate_fds(n_fds)
+                ce = ChaseEntailment(self.schema, deps, target)
+                
+                start = time.perf_counter()
+                ce.run()
+                total_entailment_time += (time.perf_counter() - start) * 1000
+                
+            avg_entailment_time = total_entailment_time / num_samples
+            result.add(TimingEntry(label, n_fds, n_attrs, "entailment", avg_entailment_time, num_samples))
 
+            # --- Lossless Benchmark ---
             half = n_attrs // 2
-            d1 = Schema(self.attr_names[:half + 1])
-            d2 = Schema(self.attr_names[half:])
-            decomp = [d1, d2]
-            lossless_iters = max(5, self.iterations // 2)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                self.schema, deps, decomp, lossless_iters
-            )
+            decomp = [Schema(self.attr_names[:half + 1]), Schema(self.attr_names[half:])]
+            
+            total_lossless_time = 0.0
+            total_steps = 0
+            total_rows = 0
+            lossless_samples = max(5, num_samples // 2)
+
+            for _ in range(lossless_samples):
+                deps = self.gen.generate_fds(n_fds)
+                cl = ChaseLossless(self.schema, deps, decomp)
+                
+                start = time.perf_counter()
+                res = cl.run()
+                total_lossless_time += (time.perf_counter() - start) * 1000
+                
+                total_steps += len(res.steps)
+                total_rows += len(res.steps[-1][1]) if res.steps else 0
+
+            avg_lossless_time = total_lossless_time / lossless_samples
             result.add(TimingEntry(
-                label,
-                n_fds,
-                n_attrs,
-                "lossless",
-                t,
-                lossless_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                label, n_fds, n_attrs, "lossless", avg_lossless_time, lossless_samples,
+                stats={
+                    "avg_steps": total_steps / lossless_samples, 
+                    "avg_final_rows": total_rows / lossless_samples
+                },
             ))
 
         return result
@@ -244,6 +238,7 @@ class BenchmarkRunner:
         """
         result = BenchmarkResult()
         attr_sizes = attr_sizes or sorted(set([4, 6, 8, len(self.attr_names)]))
+        num_samples = self.iterations
 
         for num_attrs in attr_sizes:
             if num_attrs < 2:
@@ -252,30 +247,50 @@ class BenchmarkRunner:
             schema = Schema(attrs)
             gen = FDGenerator(attrs, seed=self.seed)
             fd_count = max(4, num_attrs * 2)
-            deps = gen.generate_fds(fd_count, max_lhs=min(3, num_attrs - 1))
             label = f"|U|={num_attrs} / |Σ|={fd_count}"
 
             target = FD(list(schema)[: min(2, num_attrs)], [list(schema)[-1]])
-            ce = ChaseEntailment(schema, deps, target)
-            t = self._time_op(lambda: ce.run(), self.iterations)
-            result.add(TimingEntry(label, fd_count, num_attrs, "entailment_attr", t, self.iterations))
+            
+            # --- Entailment Benchmark ---
+            total_entailment_time = 0.0
+            for _ in range(num_samples):
+                deps = gen.generate_fds(fd_count, max_lhs=min(3, num_attrs - 1))
+                ce = ChaseEntailment(schema, deps, target)
+                
+                start = time.perf_counter()
+                ce.run()
+                total_entailment_time += (time.perf_counter() - start) * 1000
+                
+            avg_entailment_time = total_entailment_time / num_samples
+            result.add(TimingEntry(label, fd_count, num_attrs, "entailment_attr", avg_entailment_time, num_samples))
 
+            # --- Lossless Benchmark ---
             half = num_attrs // 2
-            d1 = Schema(attrs[:half + 1])
-            d2 = Schema(attrs[half:])
-            decomp = [d1, d2]
-            lossless_iters = max(5, self.iterations // 2)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                schema, deps, decomp, lossless_iters
-            )
+            decomp = [Schema(attrs[:half + 1]), Schema(attrs[half:])]
+            
+            total_lossless_time = 0.0
+            total_steps = 0
+            total_rows = 0
+            lossless_samples = max(5, num_samples // 2)
+
+            for _ in range(lossless_samples):
+                deps = gen.generate_fds(fd_count, max_lhs=min(3, num_attrs - 1))
+                cl = ChaseLossless(schema, deps, decomp)
+                
+                start = time.perf_counter()
+                res = cl.run()
+                total_lossless_time += (time.perf_counter() - start) * 1000
+                
+                total_steps += len(res.steps)
+                total_rows += len(res.steps[-1][1]) if res.steps else 0
+
+            avg_lossless_time = total_lossless_time / lossless_samples
             result.add(TimingEntry(
-                label,
-                fd_count,
-                num_attrs,
-                "lossless_attr",
-                t,
-                lossless_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                label, fd_count, num_attrs, "lossless_attr", avg_lossless_time, lossless_samples,
+                stats={
+                    "avg_steps": total_steps / lossless_samples, 
+                    "avg_final_rows": total_rows / lossless_samples
+                },
             ))
 
         return result
@@ -286,43 +301,64 @@ class BenchmarkRunner:
         """
         result = BenchmarkResult()
         n_attrs = len(self.attr_names)
+        half = n_attrs // 2
+        decomp = [Schema(self.attr_names[:half + 1]), Schema(self.attr_names[half:])]
+        ablation_samples = max(5, self.iterations // 10)
 
         for n_fds in self.fd_sizes:
-            fds = self.gen.generate_fds(n_fds)
-            mvds = self.gen.generate_mvds(max(1, n_fds // 3))
+            total_time_fd = 0.0
+            total_steps_fd = 0
+            total_rows_fd = 0
+            
+            total_time_comb = 0.0
+            total_steps_comb = 0
+            total_rows_comb = 0
+            total_mvds = 0
 
-            # Simple 2-way decomposition
-            half = n_attrs // 2
-            d1 = Schema(self.attr_names[:half + 1])
-            d2 = Schema(self.attr_names[half:])
-            decomp = [d1, d2]
+            for _ in range(ablation_samples):
+                fds = self.gen.generate_fds(n_fds)
+                
+                # FD-only chase run
+                cl_fd = ChaseLossless(self.schema, fds, decomp)
+                start = time.perf_counter()
+                res_fd = cl_fd.run()
+                total_time_fd += (time.perf_counter() - start) * 1000
+                total_steps_fd += len(res_fd.steps)
+                total_rows_fd += len(res_fd.steps[-1][1]) if res_fd.steps else 0
 
-            # FD-only chase
-            ablation_iters = max(5, self.iterations // 10)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                self.schema, fds, decomp, ablation_iters
-            )
+                if with_mvd:
+                    mvds = self.gen.generate_mvds(max(1, n_fds // 3))
+                    total_mvds += len(mvds)
+                    
+                    combined = fds.copy()
+                    for m in mvds:
+                        combined.add(m)
+                        
+                    # FD + MVD chase run
+                    cl_comb = ChaseLossless(self.schema, combined, decomp)
+                    start = time.perf_counter()
+                    res_comb = cl_comb.run()
+                    total_time_comb += (time.perf_counter() - start) * 1000
+                    total_steps_comb += len(res_comb.steps)
+                    total_rows_comb += len(res_comb.steps[-1][1]) if res_comb.steps else 0
+
             result.add(TimingEntry(
                 f"|Σ|={n_fds} (FD-only)", n_fds, n_attrs,
-                "lossless_fd_only", t, ablation_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                "lossless_fd_only", total_time_fd / ablation_samples, ablation_samples,
+                stats={
+                    "avg_steps": total_steps_fd / ablation_samples, 
+                    "avg_final_rows": total_rows_fd / ablation_samples
+                },
             ))
 
             if with_mvd:
-                # FD + MVD chase
-                combined = fds.copy()
-                for m in mvds:
-                    combined.add(m)
-                t, avg_steps, avg_rows = self._measure_lossless(
-                    self.schema, combined, decomp, ablation_iters
-                )
                 result.add(TimingEntry(
                     f"|Σ|={n_fds} (FD+MVD)", n_fds, n_attrs,
-                    "lossless_fd+mvd", t, ablation_iters,
+                    "lossless_fd+mvd", total_time_comb / ablation_samples, ablation_samples,
                     stats={
-                        "avg_steps": avg_steps,
-                        "avg_final_rows": avg_rows,
-                        "num_mvds": float(len(mvds)),
+                        "avg_steps": total_steps_comb / ablation_samples,
+                        "avg_final_rows": total_rows_comb / ablation_samples,
+                        "num_mvds": total_mvds / ablation_samples,
                     },
                 ))
 
