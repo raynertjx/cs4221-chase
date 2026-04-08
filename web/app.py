@@ -290,12 +290,14 @@ def api_benchmark():
         def build_sweep(max_value):
             return [value for value in allowed_sizes if value <= max_value]
 
+        benchmark_seeds = [42, 43, 44, 45, 46]
         sizes = build_sweep(max_fds)
         runner = BenchmarkRunner(
             attr_names=bench_attrs,
             fd_sizes=sizes,
             iterations=iterations,
             seed=42,
+            benchmark_seeds=benchmark_seeds,
         )
         result = runner.run_all()
         entries = []
@@ -347,6 +349,7 @@ def api_benchmark():
                 "num_attrs": num_attrs,
                 "max_fds": max_fds,
                 "iterations": iterations,
+                "num_workloads": len(benchmark_seeds),
             },
             "requested": {
                 "num_attrs": requested_num_attrs,

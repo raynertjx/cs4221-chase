@@ -144,14 +144,15 @@ class BenchmarkRunner:
         fd_sizes: Optional[List[int]] = None,
         iterations: int = 50,
         seed: Optional[int] = None,
+        benchmark_seeds: Optional[List[int]] = None,
     ) -> None:
         self.attr_names = attr_names
         self.schema = Schema(attr_names)
         self.fd_sizes = fd_sizes or [4, 8, 12, 16, 20, 24]
         self.iterations = iterations
         self.seed = seed
-        self.gen = FDGenerator(attr_names, seed=seed)
         self.rng = random.Random(seed)
+        self.benchmark_seeds = benchmark_seeds or ([seed] if seed is not None else [42])
 
     def _time_op(self, fn: Callable[[], Any], iters: int) -> float:
         """Return average time in ms."""
@@ -160,6 +161,9 @@ class BenchmarkRunner:
             fn()
         elapsed = (time.perf_counter() - start) / iters * 1000
         return elapsed
+
+    def _mean(self, values: List[float]) -> float:
+        return sum(values) / len(values) if values else 0.0
 
     def _attr_names_for(self, count: int) -> List[str]:
         if count <= len(self.attr_names):
@@ -207,30 +211,52 @@ class BenchmarkRunner:
         n_attrs = len(self.attr_names)
 
         for n_fds in self.fd_sizes:
-            deps = self.gen.generate_fds(n_fds)
             label = f"|Σ|={n_fds} / |U|={n_attrs}"
+            entailment_samples: List[float] = []
+            lossless_samples: List[float] = []
+            lossless_steps: List[float] = []
+            lossless_rows: List[float] = []
 
-            target = FD(list(self.schema)[:2], [list(self.schema)[-1]])
-            ce = ChaseEntailment(self.schema, deps, target)
-            t = self._time_op(lambda: ce.run(), self.iterations)
-            result.add(TimingEntry(label, n_fds, n_attrs, "entailment", t, self.iterations))
+            for benchmark_seed in self.benchmark_seeds:
+                deps = FDGenerator(self.attr_names, seed=benchmark_seed).generate_fds(n_fds)
 
-            half = n_attrs // 2
-            d1 = Schema(self.attr_names[:half + 1])
-            d2 = Schema(self.attr_names[half:])
-            decomp = [d1, d2]
-            lossless_iters = max(5, self.iterations // 2)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                self.schema, deps, decomp, lossless_iters
-            )
+                target = FD(list(self.schema)[:2], [list(self.schema)[-1]])
+                ce = ChaseEntailment(self.schema, deps, target)
+                entailment_samples.append(self._time_op(lambda: ce.run(), self.iterations))
+
+                half = n_attrs // 2
+                d1 = Schema(self.attr_names[:half + 1])
+                d2 = Schema(self.attr_names[half:])
+                decomp = [d1, d2]
+                lossless_iters = max(5, self.iterations // 2)
+                t, avg_steps, avg_rows = self._measure_lossless(
+                    self.schema, deps, decomp, lossless_iters
+                )
+                lossless_samples.append(t)
+                lossless_steps.append(avg_steps)
+                lossless_rows.append(avg_rows)
+
+            result.add(TimingEntry(
+                label,
+                n_fds,
+                n_attrs,
+                "entailment",
+                self._mean(entailment_samples),
+                self.iterations,
+                stats={"num_workloads": float(len(self.benchmark_seeds))},
+            ))
             result.add(TimingEntry(
                 label,
                 n_fds,
                 n_attrs,
                 "lossless",
-                t,
+                self._mean(lossless_samples),
                 lossless_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                stats={
+                    "avg_steps": self._mean(lossless_steps),
+                    "avg_final_rows": self._mean(lossless_rows),
+                    "num_workloads": float(len(self.benchmark_seeds)),
+                },
             ))
 
         return result
@@ -250,32 +276,55 @@ class BenchmarkRunner:
                 continue
             attrs = self._attr_names_for(num_attrs)
             schema = Schema(attrs)
-            gen = FDGenerator(attrs, seed=self.seed)
             fd_count = max(4, num_attrs * 2)
-            deps = gen.generate_fds(fd_count, max_lhs=min(3, num_attrs - 1))
             label = f"|U|={num_attrs} / |Σ|={fd_count}"
+            entailment_samples: List[float] = []
+            lossless_samples: List[float] = []
+            lossless_steps: List[float] = []
+            lossless_rows: List[float] = []
 
-            target = FD(list(schema)[: min(2, num_attrs)], [list(schema)[-1]])
-            ce = ChaseEntailment(schema, deps, target)
-            t = self._time_op(lambda: ce.run(), self.iterations)
-            result.add(TimingEntry(label, fd_count, num_attrs, "entailment_attr", t, self.iterations))
+            for benchmark_seed in self.benchmark_seeds:
+                deps = FDGenerator(attrs, seed=benchmark_seed).generate_fds(
+                    fd_count, max_lhs=min(3, num_attrs - 1)
+                )
 
-            half = num_attrs // 2
-            d1 = Schema(attrs[:half + 1])
-            d2 = Schema(attrs[half:])
-            decomp = [d1, d2]
-            lossless_iters = max(5, self.iterations // 2)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                schema, deps, decomp, lossless_iters
-            )
+                target = FD(list(schema)[: min(2, num_attrs)], [list(schema)[-1]])
+                ce = ChaseEntailment(schema, deps, target)
+                entailment_samples.append(self._time_op(lambda: ce.run(), self.iterations))
+
+                half = num_attrs // 2
+                d1 = Schema(attrs[:half + 1])
+                d2 = Schema(attrs[half:])
+                decomp = [d1, d2]
+                lossless_iters = max(5, self.iterations // 2)
+                t, avg_steps, avg_rows = self._measure_lossless(
+                    schema, deps, decomp, lossless_iters
+                )
+                lossless_samples.append(t)
+                lossless_steps.append(avg_steps)
+                lossless_rows.append(avg_rows)
+
+            result.add(TimingEntry(
+                label,
+                fd_count,
+                num_attrs,
+                "entailment_attr",
+                self._mean(entailment_samples),
+                self.iterations,
+                stats={"num_workloads": float(len(self.benchmark_seeds))},
+            ))
             result.add(TimingEntry(
                 label,
                 fd_count,
                 num_attrs,
                 "lossless_attr",
-                t,
+                self._mean(lossless_samples),
                 lossless_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                stats={
+                    "avg_steps": self._mean(lossless_steps),
+                    "avg_final_rows": self._mean(lossless_rows),
+                    "num_workloads": float(len(self.benchmark_seeds)),
+                },
             ))
 
         return result
@@ -288,41 +337,63 @@ class BenchmarkRunner:
         n_attrs = len(self.attr_names)
 
         for n_fds in self.fd_sizes:
-            fds = self.gen.generate_fds(n_fds)
-            mvds = self.gen.generate_mvds(max(1, n_fds // 3))
-
-            # Simple 2-way decomposition
-            half = n_attrs // 2
-            d1 = Schema(self.attr_names[:half + 1])
-            d2 = Schema(self.attr_names[half:])
-            decomp = [d1, d2]
-
-            # FD-only chase
             ablation_iters = max(5, self.iterations // 10)
-            t, avg_steps, avg_rows = self._measure_lossless(
-                self.schema, fds, decomp, ablation_iters
-            )
+            fd_only_samples: List[float] = []
+            fd_only_steps: List[float] = []
+            fd_only_rows: List[float] = []
+            mixed_samples: List[float] = []
+            mixed_steps: List[float] = []
+            mixed_rows: List[float] = []
+            mvd_counts: List[float] = []
+
+            for benchmark_seed in self.benchmark_seeds:
+                gen = FDGenerator(self.attr_names, seed=benchmark_seed)
+                fds = gen.generate_fds(n_fds)
+                mvds = gen.generate_mvds(max(1, n_fds // 3))
+
+                half = n_attrs // 2
+                d1 = Schema(self.attr_names[:half + 1])
+                d2 = Schema(self.attr_names[half:])
+                decomp = [d1, d2]
+
+                t, avg_steps, avg_rows = self._measure_lossless(
+                    self.schema, fds, decomp, ablation_iters
+                )
+                fd_only_samples.append(t)
+                fd_only_steps.append(avg_steps)
+                fd_only_rows.append(avg_rows)
+
+                if with_mvd:
+                    combined = fds.copy()
+                    for m in mvds:
+                        combined.add(m)
+                    t, avg_steps, avg_rows = self._measure_lossless(
+                        self.schema, combined, decomp, ablation_iters
+                    )
+                    mixed_samples.append(t)
+                    mixed_steps.append(avg_steps)
+                    mixed_rows.append(avg_rows)
+                    mvd_counts.append(float(len(mvds)))
+
             result.add(TimingEntry(
                 f"|Σ|={n_fds} (FD-only)", n_fds, n_attrs,
-                "lossless_fd_only", t, ablation_iters,
-                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                "lossless_fd_only", self._mean(fd_only_samples), ablation_iters,
+                stats={
+                    "avg_steps": self._mean(fd_only_steps),
+                    "avg_final_rows": self._mean(fd_only_rows),
+                    "num_workloads": float(len(self.benchmark_seeds)),
+                },
             ))
 
             if with_mvd:
-                # FD + MVD chase
-                combined = fds.copy()
-                for m in mvds:
-                    combined.add(m)
-                t, avg_steps, avg_rows = self._measure_lossless(
-                    self.schema, combined, decomp, ablation_iters
-                )
                 result.add(TimingEntry(
                     f"|Σ|={n_fds} (FD+MVD)", n_fds, n_attrs,
-                    "lossless_fd+mvd", t, ablation_iters,
+                    "lossless_fd+mvd", self._mean(mixed_samples), ablation_iters,
                     stats={
-                        "avg_steps": avg_steps,
-                        "avg_final_rows": avg_rows,
-                        "num_mvds": float(len(mvds)),
+                        "avg_steps": self._mean(mixed_steps),
+                        "avg_final_rows": self._mean(mixed_rows),
+                        "num_mvds": self._mean(mvd_counts),
+                        "num_workloads": float(len(self.benchmark_seeds)),
                     },
                 ))
 

@@ -370,7 +370,7 @@ const RIGHT_PANELS = {
       <div class="slider-head"><span class="slider-label">Iterations</span><span class="slider-value" id="benchIterationsValue">10</span></div>
       <input class="range-input" id="benchIterations" type="range" min="5" max="20" step="5" value="10" oninput="syncBenchmarkControls()">
     </div>
-    <div class="info-box"><strong>Report Benchmark</strong><br>Chase-only benchmark mode. Use |U| for schema width and |Σ| for dependency count. The benchmark API converts these slider maxima into fixed scripted sweeps for reproducible runs across entailment, lossless join, and FD-only vs FD+MVD ablation.</div>`,
+    <div class="info-box"><strong>Report Benchmark</strong><br>Chase-only benchmark mode. Use |U| for schema width and |Σ| for dependency count. The benchmark API converts these slider maxima into fixed scripted sweeps and aggregates each benchmark point over multiple fixed-seed synthetic dependency sets for reproducible comparisons across entailment, lossless join, and FD-only vs FD+MVD ablation.</div>`,
 };
 
 // ── Theme ───────────────────────────────────────────────────────────────────
@@ -779,6 +779,7 @@ function renderBenchmark(data) {
     } else {
       html += `<strong>Interactive Mode</strong><br>Ran with |U|=${data.effective.num_attrs}, |Σ|=${data.effective.max_fds}, iterations=${data.effective.iterations}.`;
     }
+    html += `<br>Each benchmark point aggregates over ${data.effective.num_workloads ?? 1} fixed-seed synthetic dependency sets.`;
     html += `<br>Dependency scaling varies |Σ| over {4, 8, ..., ${data.effective.max_fds}} while holding |U| fixed.`;
     html += `<br>Attribute scaling varies |U| over {4, 8, ..., ${data.effective.num_attrs}} and uses a fixed density rule |Σ| = 2|U|.`;
     html += '<br>Ablation compares FD-only and FD+MVD lossless-join Chase on the same benchmark family.';
