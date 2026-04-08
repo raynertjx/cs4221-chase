@@ -4,6 +4,7 @@
 import sys
 import os
 import json
+import time
 import traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -43,6 +44,19 @@ def parse_attrs(text: str) -> list[str]:
 def parse_deps(text: str) -> DependencySet:
     lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
     return DependencySet.from_strings(lines)
+
+
+def parse_target_dep(text: str):
+    target_str = text.strip()
+    if "->>" in target_str:
+        parts = target_str.split("->>")
+        lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
+        rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
+        return MVD(lhs, rhs)
+    parts = target_str.split("->")
+    lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
+    rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
+    return FD(lhs, rhs)
 
 
 def parse_decomp(text: str) -> list[list[str]]:
@@ -98,18 +112,7 @@ def api_entailment():
         deps = parse_deps(data["fds"])
         schema = Schema(attrs)
 
-        # Parse target — detect MVD (->>) vs FD (->)
-        target_str = data["target"]
-        if "->>" in target_str:
-            parts = target_str.split("->>")
-            lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
-            rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
-            target = MVD(lhs, rhs)
-        else:
-            parts = target_str.split("->")
-            lhs = [a.strip().upper() for a in parts[0].split(",") if a.strip()]
-            rhs = [a.strip().upper() for a in parts[1].split(",") if a.strip()]
-            target = FD(lhs, rhs)
+        target = parse_target_dep(data["target"])
 
         result = ChaseEntailment(schema, deps, target).run()
         steps = [{"desc": desc, "tableau": tableau} for desc, tableau in result.steps]
@@ -261,11 +264,37 @@ def api_benchmark():
     try:
         data = request.json
         attrs = parse_attrs(data.get("attrs", "A,B,C,D,E,F"))
-        sizes = data.get("sizes", [5, 10, 20, 40])
+        requested_num_attrs = max(4, int(data.get("num_attrs", len(attrs) or 12)))
+        requested_max_fds = max(4, int(data.get("max_fds", 24)))
+        requested_iterations = max(1, int(data.get("iterations", 10)))
+
+        allowed_sizes = [4, 8, 12, 16, 20, 24]
+
+        def clamp_allowed(value):
+            return min(allowed_sizes, key=lambda candidate: abs(candidate - value))
+
+        num_attrs = clamp_allowed(requested_num_attrs)
+        max_fds = clamp_allowed(requested_max_fds)
+        iterations = min(requested_iterations, 10)
+
+        base_attrs = attrs or ["A", "B", "C", "D", "E", "F"]
+        if len(base_attrs) >= num_attrs:
+            bench_attrs = base_attrs[:num_attrs]
+        else:
+            bench_attrs = list(base_attrs)
+            idx = 0
+            while len(bench_attrs) < num_attrs:
+                bench_attrs.append(f"A{idx}")
+                idx += 1
+
+        def build_sweep(max_value):
+            return [value for value in allowed_sizes if value <= max_value]
+
+        sizes = build_sweep(max_fds)
         runner = BenchmarkRunner(
-            attr_names=attrs,
+            attr_names=bench_attrs,
             fd_sizes=sizes,
-            iterations=20,
+            iterations=iterations,
             seed=42,
         )
         result = runner.run_all()
@@ -281,20 +310,9 @@ def api_benchmark():
                 "stats": {k: round(v, 3) for k, v in e.stats.items()},
             })
 
-        row_scaling = runner.run_row_scaling()
-        row_entries = []
-        for e in row_scaling.entries:
-            row_entries.append({
-                "label": e.label,
-                "operation": e.operation,
-                "num_fds": e.num_fds,
-                "num_attrs": e.num_attrs,
-                "num_rows": e.num_rows,
-                "time_ms": round(e.time_ms, 3),
-                "stats": {k: round(v, 3) for k, v in e.stats.items()},
-            })
-
-        attr_scaling = runner.run_attr_scaling()
+        attr_scaling = runner.run_attr_scaling(
+            attr_sizes=build_sweep(num_attrs),
+        )
         attr_entries = []
         for e in attr_scaling.entries:
             attr_entries.append({
@@ -323,9 +341,83 @@ def api_benchmark():
         return jsonify({
             "success": True,
             "entries": entries,
-            "row_scaling": row_entries,
             "attr_scaling": attr_entries,
             "ablation": ablation_entries,
+            "effective": {
+                "num_attrs": num_attrs,
+                "max_fds": max_fds,
+                "iterations": iterations,
+            },
+            "requested": {
+                "num_attrs": requested_num_attrs,
+                "max_fds": requested_max_fds,
+                "iterations": requested_iterations,
+            },
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/benchmark_custom", methods=["POST"])
+def api_benchmark_custom():
+    try:
+        data = request.json
+        attrs = parse_attrs(data["attrs"])
+        deps = parse_deps(data["fds"])
+        target = parse_target_dep(data["target"])
+        decomp_lists = parse_decomp(data["decomp"])
+        iterations = max(1, int(data.get("iterations", 10)))
+
+        schema = Schema(attrs)
+        decomp = [Schema(d) for d in decomp_lists]
+
+        def avg_time(fn, iters):
+            start = time.perf_counter()
+            for _ in range(iters):
+                fn()
+            return (time.perf_counter() - start) / iters * 1000
+
+        entries = []
+
+        entailment_ms = avg_time(lambda: ChaseEntailment(schema, deps, target).run(), iterations)
+        entries.append({
+            "label": "Custom input",
+            "operation": "entailment",
+            "num_fds": len(deps),
+            "num_attrs": len(attrs),
+            "num_rows": None,
+            "time_ms": round(entailment_ms, 3),
+            "stats": {},
+        })
+
+        lossless_iters = max(3, min(iterations, 10))
+        total_steps = 0.0
+        total_rows = 0.0
+        start = time.perf_counter()
+        for _ in range(lossless_iters):
+            result = ChaseLossless(schema, deps, decomp).run()
+            total_steps += len(result.steps)
+            total_rows += len(result.steps[-1][1]) if result.steps else 0
+        lossless_ms = (time.perf_counter() - start) / lossless_iters * 1000
+        entries.append({
+            "label": "Custom input",
+            "operation": "lossless",
+            "num_fds": len(deps),
+            "num_attrs": len(attrs),
+            "num_rows": None,
+            "time_ms": round(lossless_ms, 3),
+            "stats": {
+                "avg_steps": round(total_steps / lossless_iters, 3),
+                "avg_final_rows": round(total_rows / lossless_iters, 3),
+            },
+        })
+
+        return jsonify({
+            "success": True,
+            "entries": entries,
+            "target": str(target),
+            "decomposition": decomp_lists,
+            "iterations": iterations,
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})

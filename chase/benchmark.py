@@ -18,12 +18,8 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .models import Attribute, DependencySet, FD, MVD, Schema, TableInstance
-from .closure import ClosureComputer
-from .minimal_cover import MinimalCoverComputer
-from .decomposition import CandidateKeyFinder, BCNFDecomposer, ThreeNFDecomposer
 from .entailment import ChaseEntailment
-from .chase import ChaseTableValidator, ChaseLossless
-from .discovery import FDDiscoverer
+from .chase import ChaseLossless
 
 # ── FDGenerator ──────────────────────────────────────────────────────────────
 
@@ -137,7 +133,7 @@ class BenchmarkRunner:
 
     Usage
     -----
-        runner = BenchmarkRunner(['A','B','C','D','E'], [5,10,20,40])
+        runner = BenchmarkRunner(['A','B','C','D','E'], [4,8,12,16,20,24])
         result = runner.run_all()
         print(result)
     """
@@ -151,7 +147,7 @@ class BenchmarkRunner:
     ) -> None:
         self.attr_names = attr_names
         self.schema = Schema(attr_names)
-        self.fd_sizes = fd_sizes or [5, 10, 20, 40, 80]
+        self.fd_sizes = fd_sizes or [4, 8, 12, 16, 20, 24]
         self.iterations = iterations
         self.seed = seed
         self.gen = FDGenerator(attr_names, seed=seed)
@@ -206,82 +202,35 @@ class BenchmarkRunner:
         return elapsed, total_steps / iterations, total_rows / iterations
 
     def run_all(self) -> BenchmarkResult:
-        """Run closure, minimal cover, entailment, and key-finding benchmarks."""
+        """Run Chase-only benchmarks across dependency-set sizes."""
         result = BenchmarkResult()
         n_attrs = len(self.attr_names)
 
         for n_fds in self.fd_sizes:
             deps = self.gen.generate_fds(n_fds)
-            label = f"{n_fds} FDs / {n_attrs} attrs"
+            label = f"|Σ|={n_fds} / |U|={n_attrs}"
 
-            # Closure
-            cc = ClosureComputer(self.schema, deps)
-            seed_attrs = list(self.schema)[:2]
-            t = self._time_op(lambda: cc.compute(frozenset(seed_attrs)), self.iterations)
-            result.add(TimingEntry(label, n_fds, n_attrs, "closure", t, self.iterations))
-
-            # Minimal cover
-            mc = MinimalCoverComputer(deps)
-            t = self._time_op(lambda: mc.compute(), max(10, self.iterations // 5))
-            result.add(TimingEntry(label, n_fds, n_attrs, "min_cover", t, max(10, self.iterations // 5)))
-
-            # Entailment
             target = FD(list(self.schema)[:2], [list(self.schema)[-1]])
             ce = ChaseEntailment(self.schema, deps, target)
             t = self._time_op(lambda: ce.run(), self.iterations)
             result.add(TimingEntry(label, n_fds, n_attrs, "entailment", t, self.iterations))
 
-            # Candidate keys
-            ckf = CandidateKeyFinder(self.schema, deps)
-            t = self._time_op(lambda: ckf.compute(), max(5, self.iterations // 10))
-            result.add(TimingEntry(label, n_fds, n_attrs, "cand_keys", t, max(5, self.iterations // 10)))
-
-            # BCNF decomposition
-            bcnf = BCNFDecomposer(self.schema, deps)
-            t = self._time_op(lambda: bcnf.decompose(), max(5, self.iterations // 10))
-            result.add(TimingEntry(label, n_fds, n_attrs, "bcnf", t, max(5, self.iterations // 10)))
-
-            # 3NF decomposition
-            threenf = ThreeNFDecomposer(self.schema, deps)
-            t = self._time_op(lambda: threenf.decompose(), max(5, self.iterations // 10))
-            result.add(TimingEntry(label, n_fds, n_attrs, "3nf", t, max(5, self.iterations // 10)))
-
-        return result
-
-    def run_row_scaling(
-        self,
-        row_sizes: Optional[List[int]] = None,
-        fd_count: Optional[int] = None,
-    ) -> BenchmarkResult:
-        """
-        Benchmark row-sensitive operations as table size grows.
-        """
-        result = BenchmarkResult()
-        n_attrs = len(self.attr_names)
-        row_sizes = row_sizes or [25, 50, 100, 250]
-        fd_count = fd_count if fd_count is not None else max(4, n_attrs)
-
-        for num_rows in row_sizes:
-            table = self._generate_table(self.attr_names, num_rows)
-            deps = self.gen.generate_fds(fd_count)
-            label = f"{num_rows} rows / {n_attrs} attrs"
-
-            discover_iters = max(3, self.iterations // 10)
-            t = self._time_op(
-                lambda: FDDiscoverer(table, max_lhs=min(3, max(1, n_attrs - 1))).run(),
-                discover_iters,
+            half = n_attrs // 2
+            d1 = Schema(self.attr_names[:half + 1])
+            d2 = Schema(self.attr_names[half:])
+            decomp = [d1, d2]
+            lossless_iters = max(5, self.iterations // 2)
+            t, avg_steps, avg_rows = self._measure_lossless(
+                self.schema, deps, decomp, lossless_iters
             )
             result.add(TimingEntry(
-                label, fd_count, n_attrs, "discover", t, discover_iters, num_rows=num_rows
-            ))
-
-            check_iters = max(3, self.iterations // 10)
-            t = self._time_op(
-                lambda: ChaseTableValidator(table, deps).run(),
-                check_iters,
-            )
-            result.add(TimingEntry(
-                label, len(deps.fds), n_attrs, "table_check", t, check_iters, num_rows=num_rows
+                label,
+                n_fds,
+                n_attrs,
+                "lossless",
+                t,
+                lossless_iters,
+                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
             ))
 
         return result
@@ -291,7 +240,7 @@ class BenchmarkRunner:
         attr_sizes: Optional[List[int]] = None,
     ) -> BenchmarkResult:
         """
-        Benchmark attribute-sensitive operations as schema width grows.
+        Benchmark Chase-only operations as schema width grows.
         """
         result = BenchmarkResult()
         attr_sizes = attr_sizes or sorted(set([4, 6, 8, len(self.attr_names)]))
@@ -304,17 +253,30 @@ class BenchmarkRunner:
             gen = FDGenerator(attrs, seed=self.seed)
             fd_count = max(4, num_attrs * 2)
             deps = gen.generate_fds(fd_count, max_lhs=min(3, num_attrs - 1))
-            label = f"{num_attrs} attrs / {fd_count} FDs"
+            label = f"|U|={num_attrs} / |Σ|={fd_count}"
 
-            cc = ClosureComputer(schema, deps)
-            seed_attrs = list(schema)[: min(2, num_attrs)]
-            t = self._time_op(lambda: cc.compute(frozenset(seed_attrs)), self.iterations)
-            result.add(TimingEntry(label, fd_count, num_attrs, "closure_attr", t, self.iterations))
+            target = FD(list(schema)[: min(2, num_attrs)], [list(schema)[-1]])
+            ce = ChaseEntailment(schema, deps, target)
+            t = self._time_op(lambda: ce.run(), self.iterations)
+            result.add(TimingEntry(label, fd_count, num_attrs, "entailment_attr", t, self.iterations))
 
-            key_iters = max(3, self.iterations // 10)
-            ckf = CandidateKeyFinder(schema, deps)
-            t = self._time_op(lambda: ckf.compute(), key_iters)
-            result.add(TimingEntry(label, fd_count, num_attrs, "cand_keys_attr", t, key_iters))
+            half = num_attrs // 2
+            d1 = Schema(attrs[:half + 1])
+            d2 = Schema(attrs[half:])
+            decomp = [d1, d2]
+            lossless_iters = max(5, self.iterations // 2)
+            t, avg_steps, avg_rows = self._measure_lossless(
+                schema, deps, decomp, lossless_iters
+            )
+            result.add(TimingEntry(
+                label,
+                fd_count,
+                num_attrs,
+                "lossless_attr",
+                t,
+                lossless_iters,
+                stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+            ))
 
         return result
 
@@ -325,7 +287,7 @@ class BenchmarkRunner:
         result = BenchmarkResult()
         n_attrs = len(self.attr_names)
 
-        for n_fds in self.fd_sizes[:4]:  # limit to keep runtime reasonable
+        for n_fds in self.fd_sizes:
             fds = self.gen.generate_fds(n_fds)
             mvds = self.gen.generate_mvds(max(1, n_fds // 3))
 
@@ -341,7 +303,7 @@ class BenchmarkRunner:
                 self.schema, fds, decomp, ablation_iters
             )
             result.add(TimingEntry(
-                f"{n_fds} FDs (no MVD)", n_fds, n_attrs,
+                f"|Σ|={n_fds} (FD-only)", n_fds, n_attrs,
                 "lossless_fd_only", t, ablation_iters,
                 stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
             ))
@@ -355,9 +317,13 @@ class BenchmarkRunner:
                     self.schema, combined, decomp, ablation_iters
                 )
                 result.add(TimingEntry(
-                    f"{n_fds} FDs + MVDs", n_fds + len(mvds), n_attrs,
+                    f"|Σ|={n_fds} (FD+MVD)", n_fds, n_attrs,
                     "lossless_fd+mvd", t, ablation_iters,
-                    stats={"avg_steps": avg_steps, "avg_final_rows": avg_rows},
+                    stats={
+                        "avg_steps": avg_steps,
+                        "avg_final_rows": avg_rows,
+                        "num_mvds": float(len(mvds)),
+                    },
                 ))
 
         return result
