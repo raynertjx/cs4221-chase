@@ -9,6 +9,7 @@
 
   :root {
     --accent: #3CFFB0;
+    --bench-accent: #3CFFB0;
     --accent2: #7B61FF;
     --red: #FF5C5C;
     --yellow: #FFD93D;
@@ -27,6 +28,7 @@
   }
   body[data-theme="light"] {
     --accent: #D62828;
+    --bench-accent: #E56B6F;
     --accent2: #F4A261;
     --red: #D62828;
     --yellow: #FCBF49;
@@ -170,8 +172,13 @@
   .bench-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
   .bench-label { font-family: var(--mono); font-size: 10px; color: var(--dim); width: 130px; text-align: right; }
   .bench-track { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-  .bench-fill { height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 3px; transition: width .5s; }
-  .bench-val { font-family: var(--mono); font-size: 10px; color: var(--accent2); width: 60px; }
+  .bench-fill { height: 100%; background: var(--bench-accent); border-radius: 3px; transition: width .5s; }
+  .bench-val { font-family: var(--mono); font-size: 10px; color: var(--accent); width: 60px; }
+  .slider-row { margin-bottom: 12px; }
+  .slider-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .slider-label { font-family: var(--mono); font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+  .slider-value { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+  .range-input { width: 100%; accent-color: var(--accent); }
 
   .hidden { display: none; }
   .closure-result { font-family: var(--mono); font-size: 18px; color: var(--accent); }
@@ -211,19 +218,23 @@
     <button class="tab" data-tab="keys">⌗ Keys</button>
     <button class="tab" data-tab="decompositions">◈ Decompose</button>
     <button class="tab" data-tab="discover">🔍 Discover</button>
-    <button class="tab" data-tab="bench">⚡ Bench</button>
+    <button class="tab" data-tab="bench_custom">△ Custom Bench</button>
+    <button class="tab" data-tab="bench_report">⚡ Report Bench</button>
   </div>
 
   <!-- Input panels -->
   <div class="panels">
     <div class="panel">
-      <div class="field">
+      <div class="field" id="attrsField">
         <label>Attributes (comma-separated)</label>
         <input id="attrs" placeholder="A, B, C, D">
       </div>
-      <div class="field">
+      <div class="field" id="fdsField">
         <label>Dependencies (FD: X,Y->Z  |  MVD: X->>Y)</label>
         <textarea id="fds" rows="4" placeholder="A,B -> C&#10;C -> D&#10;A ->> B"></textarea>
+      </div>
+      <div class="info-box hidden" id="benchReportInfo">
+        <strong>Report Benchmark Inputs</strong><br>Use the controls on the right to run scripted Chase benchmark sweeps for the report. The shared attribute and dependency text inputs are hidden in this mode because the report benchmark uses generated workloads.
       </div>
     </div>
 
@@ -288,9 +299,19 @@ const DEFAULTS = {
     fds: '',
     discoverTable: 'Alice, CS, Prof X\nBob, CS, Prof X\nCharlie, Math, Prof Y\nDiana, Math, Prof Y\nEve, EE, Prof Z'
   },
-  bench: {
+  bench_custom: {
     attrs: 'A, B, C, D, E, F',
-    fds: 'A -> B\nB -> C\nC -> D\nA,B -> E\nD,E -> F'
+    fds: 'A -> B\nB -> C\nC -> D\nA,B -> E\nD,E -> F',
+    benchTarget: 'A,B -> F',
+    benchDecomp: '{A,B,C}\n{C,D,E,F}',
+    benchIterations: 10
+  },
+  bench_report: {
+    attrs: 'A, B, C, D, E, F',
+    fds: 'A -> B\nB -> C\nC -> D\nA,B -> E\nD,E -> F',
+    benchNumAttrs: 12,
+    benchMaxFds: 24,
+    benchIterations: 10
   },
 };
 
@@ -326,7 +347,30 @@ const RIGHT_PANELS = {
     <div class="field"><label>Table Rows (comma-separated, matching attributes on the left)</label>
     <textarea id="discoverTable" rows="4" placeholder="Alice, CS, Prof X&#10;Bob, CS, Prof X"></textarea></div>
     <div class="info-box"><strong>FD Discovery</strong><br>Discover minimal FDs from a table using partition refinement. Each column maps to the attribute in the same position. No dependencies needed — they are discovered automatically.</div>`,
-  bench: `<div class="info-box"><strong>Benchmark</strong><br>Time closure, minimal cover, entailment, candidate keys, BCNF, and 3NF decompositions on random FD sets of increasing size. Also runs FD-only vs FD+MVD ablation.</div>`,
+  bench_custom: `
+    <div class="field"><label>Target dependency for entailment timing</label>
+    <input id="benchTarget" placeholder="A,B -> F"></div>
+    <div class="field"><label>Lossless decomposition (one per line: {A,B,C})</label>
+    <textarea id="benchDecomp" rows="3" placeholder="{A,B,C}&#10;{C,D,E,F}"></textarea></div>
+    <div class="slider-row">
+      <div class="slider-head"><span class="slider-label">Iterations</span><span class="slider-value" id="benchCustomIterationsValue">10</span></div>
+      <input class="range-input" id="benchCustomIterations" type="range" min="1" max="20" step="1" value="10" oninput="syncBenchmarkControls()">
+    </div>
+    <div class="info-box"><strong>Custom Benchmark</strong><br>Time Chase entailment and lossless join on the exact attributes and dependency set you entered on the left.</div>`,
+  bench_report: `
+    <div class="slider-row">
+      <div class="slider-head"><span class="slider-label">Schema Width |U|</span><span class="slider-value" id="benchNumAttrsValue">12</span></div>
+      <input class="range-input" id="benchNumAttrs" type="range" min="4" max="24" step="4" value="12" oninput="syncBenchmarkControls()">
+    </div>
+    <div class="slider-row">
+      <div class="slider-head"><span class="slider-label">Dependency Count |Σ|</span><span class="slider-value" id="benchMaxFdsValue">24</span></div>
+      <input class="range-input" id="benchMaxFds" type="range" min="4" max="24" step="4" value="24" oninput="syncBenchmarkControls()">
+    </div>
+    <div class="slider-row">
+      <div class="slider-head"><span class="slider-label">Iterations</span><span class="slider-value" id="benchIterationsValue">10</span></div>
+      <input class="range-input" id="benchIterations" type="range" min="5" max="20" step="5" value="10" oninput="syncBenchmarkControls()">
+    </div>
+    <div class="info-box"><strong>Report Benchmark</strong><br>Chase-only benchmark mode. Use |U| for schema width and |Σ| for dependency count. The benchmark API converts these slider maxima into fixed scripted sweeps for reproducible runs across entailment, lossless join, and FD-only vs FD+MVD ablation.</div>`,
 };
 
 // ── Theme ───────────────────────────────────────────────────────────────────
@@ -358,9 +402,7 @@ function loadDefaults(tab) {
   document.getElementById('attrs').value = d.attrs || '';
   document.getElementById('fds').value = d.fds || '';
 
-  // Show/hide FDs field (Discover doesn't use FDs)
-  const fdsField = document.getElementById('fds').closest('.field');
-  fdsField.style.display = (tab === 'discover') ? 'none' : '';
+  updateSharedInputsVisibility(tab);
 
   // Fill right-panel fields after a tick (DOM might not be ready yet)
   setTimeout(() => {
@@ -369,6 +411,18 @@ function loadDefaults(tab) {
     if (d.table && document.getElementById('table')) document.getElementById('table').value = d.table;
     if (d.closureInput && document.getElementById('closureInput')) document.getElementById('closureInput').value = d.closureInput;
     if (d.discoverTable && document.getElementById('discoverTable')) document.getElementById('discoverTable').value = d.discoverTable;
+    if (d.benchTarget && document.getElementById('benchTarget')) document.getElementById('benchTarget').value = d.benchTarget;
+    if (d.benchDecomp && document.getElementById('benchDecomp')) document.getElementById('benchDecomp').value = d.benchDecomp;
+    if (document.getElementById('benchCustomIterations')) {
+      document.getElementById('benchCustomIterations').value = d.benchIterations || 10;
+      syncBenchmarkControls();
+    }
+    if (document.getElementById('benchNumAttrs')) {
+      document.getElementById('benchNumAttrs').value = d.benchNumAttrs || 8;
+      document.getElementById('benchMaxFds').value = d.benchMaxFds || 24;
+      document.getElementById('benchIterations').value = d.benchIterations || 20;
+      syncBenchmarkControls();
+    }
   }, 30);
 }
 
@@ -377,6 +431,7 @@ function resetTab() {
   document.getElementById('right-panel').innerHTML = RIGHT_PANELS[currentTab] || '';
   document.getElementById('results').innerHTML = '';
   document.getElementById('error').classList.add('hidden');
+  updateSharedInputsVisibility(currentTab);
   if (currentTab === 'decompositions') {
     setTimeout(() => updateDecompInfo(), 50);
   }
@@ -392,6 +447,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     document.getElementById('right-panel').innerHTML = RIGHT_PANELS[currentTab] || '';
     document.getElementById('results').innerHTML = '';
     document.getElementById('error').classList.add('hidden');
+    updateSharedInputsVisibility(currentTab);
 
     // Load defaults for this tab
     loadDefaults(currentTab);
@@ -403,7 +459,7 @@ document.querySelectorAll('.tab').forEach(btn => {
 
     // Update run button text
     const labels = { table_check:'FD Check', entailment:'Chase', lossless:'Chase',
-      mincover:'Min Cover', closure:'Closure', keys:'Find Keys', decompositions:'Decompose', discover:'Discover', bench:'Benchmark' };
+      mincover:'Min Cover', closure:'Closure', keys:'Find Keys', decompositions:'Decompose', discover:'Discover', bench_custom:'Custom Bench', bench_report:'Report Bench' };
     document.getElementById('runBtn').textContent = '▶ Run ' + (labels[currentTab] || 'Chase');
   });
 });
@@ -428,6 +484,32 @@ function updateDecompInfo() {
       infoBox.innerHTML = '<strong>3NF Decomposition</strong><br>Decompose into Third Normal Form (3NF): every non-key attribute is fully dependent on each candidate key.';
     }
   }
+}
+
+function syncBenchmarkControls() {
+  const pairs = [
+    ['benchCustomIterations', 'benchCustomIterationsValue'],
+    ['benchNumAttrs', 'benchNumAttrsValue'],
+    ['benchMaxFds', 'benchMaxFdsValue'],
+    ['benchIterations', 'benchIterationsValue'],
+  ];
+  for (const [inputId, valueId] of pairs) {
+    const input = document.getElementById(inputId);
+    const value = document.getElementById(valueId);
+    if (input && value) value.textContent = input.value;
+  }
+}
+
+function updateSharedInputsVisibility(tab) {
+  const attrsField = document.getElementById('attrsField');
+  const fdsField = document.getElementById('fdsField');
+  const reportInfo = document.getElementById('benchReportInfo');
+  if (!attrsField || !fdsField || !reportInfo) return;
+
+  const reportMode = tab === 'bench_report';
+  attrsField.style.display = reportMode ? 'none' : '';
+  fdsField.style.display = (tab === 'discover' || reportMode) ? 'none' : '';
+  reportInfo.classList.toggle('hidden', !reportMode);
 }
 
 // ── API call ────────────────────────────────────────────────────────────────
@@ -488,8 +570,23 @@ async function run() {
         data = await apiCall('discover', { attrs, table: gv('discoverTable') });
         renderDiscover(data);
         break;
-      case 'bench':
-        data = await apiCall('benchmark', { attrs });
+      case 'bench_custom':
+        data = await apiCall('benchmark_custom', {
+          attrs,
+          fds,
+          target: gv('benchTarget'),
+          decomp: gv('benchDecomp'),
+          iterations: gv('benchCustomIterations'),
+        });
+        renderBenchmark(data);
+        break;
+      case 'bench_report':
+        data = await apiCall('benchmark', {
+          attrs,
+          num_attrs: gv('benchNumAttrs'),
+          max_fds: gv('benchMaxFds'),
+          iterations: gv('benchIterations'),
+        });
         renderBenchmark(data);
         break;
     }
@@ -505,7 +602,7 @@ async function run() {
 
   btn.disabled = false;
   const labels = { table_check:'FD Check', entailment:'Chase', lossless:'Chase',
-    mincover:'Min Cover', closure:'Closure', keys:'Find Keys', decompositions:'Decompose', discover:'Discover', bench:'Benchmark' };
+    mincover:'Min Cover', closure:'Closure', keys:'Find Keys', decompositions:'Decompose', discover:'Discover', bench_custom:'Custom Bench', bench_report:'Report Bench' };
   btn.textContent = '▶ Run ' + (labels[currentTab] || 'Chase');
 }
 
@@ -663,20 +760,51 @@ function renderBenchmark(data) {
   if (!data.success) return;
   let html = '<div class="result-box"><div class="result-title">Performance Benchmark</div>';
 
-  html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
-  html += '<table class="data-table"><thead><tr>';
-  html += '<th>Label</th><th>Operation</th><th>#FDs</th><th>#Rows</th><th>ms/op</th>';
-  html += '</tr></thead><tbody>';
-  for (const e of data.entries) {
-    const color = {closure:'var(--accent)',min_cover:'var(--yellow)',entailment:'var(--accent2)',cand_keys:'var(--red)',discover:'var(--cyan)',table_check:'var(--orange)',bcnf:'var(--magenta)'}[e.operation]||'var(--text)';
-    html += `<tr><td style="text-align:left">${e.label}</td><td style="color:${color}">${e.operation}</td>`;
-    html += `<td>${e.num_fds}</td><td>${e.num_rows ?? '-'}</td><td style="color:${color}">${e.time_ms}</td></tr>`;
+  if (data.target) {
+    html += '<div class="info-box" style="margin-bottom:16px">';
+    html += `<strong>Custom Benchmark</strong><br>Target: ${data.target} · Iterations: ${data.iterations}`;
+    html += '</div>';
   }
-  html += '</tbody></table></div>';
+
+  if (data.effective) {
+    const requested = data.requested || {};
+    const throttled =
+      requested.num_attrs !== data.effective.num_attrs ||
+      requested.max_fds !== data.effective.max_fds ||
+      requested.iterations !== data.effective.iterations;
+    html += '<div class="info-box" style="margin-bottom:16px">';
+    if (throttled) {
+      html += `<strong>Interactive Mode</strong><br>Requested |U|=${requested.num_attrs}, |Σ|=${requested.max_fds}, iterations=${requested.iterations}. `;
+      html += `Ran with capped values |U|=${data.effective.num_attrs}, |Σ|=${data.effective.max_fds}, iterations=${data.effective.iterations} to keep the web benchmark responsive.`;
+    } else {
+      html += `<strong>Interactive Mode</strong><br>Ran with |U|=${data.effective.num_attrs}, |Σ|=${data.effective.max_fds}, iterations=${data.effective.iterations}.`;
+    }
+    html += `<br>Dependency scaling varies |Σ| over {4, 8, ..., ${data.effective.max_fds}} while holding |U| fixed.`;
+    html += `<br>Attribute scaling varies |U| over {4, 8, ..., ${data.effective.num_attrs}} and uses a fixed density rule |Σ| = 2|U|.`;
+    html += '<br>Ablation compares FD-only and FD+MVD lossless-join Chase on the same benchmark family.';
+    html += '</div>';
+  }
 
   const entailEntries = data.entries.filter(e => e.operation === 'entailment');
+  const losslessEntries = data.entries.filter(e => e.operation === 'lossless');
+  if (entailEntries.length || losslessEntries.length) {
+    html += '<div class="result-box" style="margin-top:16px">';
+    html += '<div class="result-title"><strong>Dependency Scaling</strong></div>';
+    html += '<div class="info-box" style="margin-bottom:16px">';
+    html += 'This section varies |Σ| while holding |U| fixed, then reports Chase runtime separately for entailment and lossless join.';
+    html += '</div>';
+  }
+
   if (entailEntries.length) {
-    html += '<div class="result-title">Entailment Scaling</div>';
+    html += '<div class="result-title"><strong>Entailment vs |Σ|</strong></div>';
+    html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>Label</th><th>|Σ|</th><th>|U|</th><th>ms/op</th>';
+    html += '</tr></thead><tbody>';
+    for (const e of entailEntries) {
+      html += `<tr><td style="text-align:left">${e.label}</td><td>${e.num_fds}</td><td>${e.num_attrs}</td><td style="color:var(--accent2)">${e.time_ms}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
     const maxT = Math.max(...entailEntries.map(e => e.time_ms));
     for (const e of entailEntries) {
       const pct = maxT > 0 ? (e.time_ms / maxT * 100) : 0;
@@ -686,43 +814,103 @@ function renderBenchmark(data) {
     }
   }
 
+  if (losslessEntries.length) {
+    html += '<div class="result-title" style="margin-top:16px"><strong>Lossless Join vs |Σ|</strong></div>';
+    html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>Label</th><th>|Σ|</th><th>|U|</th><th>ms/op</th><th>Avg Steps</th><th>Avg Final Rows</th>';
+    html += '</tr></thead><tbody>';
+    for (const e of losslessEntries) {
+      html += `<tr><td style="text-align:left">${e.label}</td><td>${e.num_fds}</td><td>${e.num_attrs}</td><td style="color:var(--accent)">${e.time_ms}</td><td>${e.stats?.avg_steps ?? '-'}</td><td>${e.stats?.avg_final_rows ?? '-'}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
+    const maxT = Math.max(...losslessEntries.map(e => e.time_ms));
+    for (const e of losslessEntries) {
+      const pct = maxT > 0 ? (e.time_ms / maxT * 100) : 0;
+      html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
+      html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
+      html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
+    }
+  }
+
+  if (entailEntries.length || losslessEntries.length) {
+    html += '</div>';
+  }
+
+  if (data.attr_scaling && data.attr_scaling.length) {
+    const attrEntail = data.attr_scaling.filter(e => e.operation === 'entailment_attr');
+    const attrLossless = data.attr_scaling.filter(e => e.operation === 'lossless_attr');
+    html += '<div class="result-box" style="margin-top:16px">';
+    html += '<div class="result-title"><strong>Attribute Scaling</strong></div>';
+    html += '<div class="info-box" style="margin-bottom:16px">';
+    html += 'This section varies |U| and uses a fixed density rule |Σ| = 2|U|, then reports Chase runtime separately for entailment and lossless join.';
+    html += '</div>';
+
+    if (attrEntail.length) {
+      html += '<div class="result-title"><strong>Entailment vs |U|</strong></div>';
+      html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+      html += '<table class="data-table"><thead><tr>';
+      html += '<th>Label</th><th>|Σ|</th><th>|U|</th><th>ms/op</th>';
+      html += '</tr></thead><tbody>';
+      for (const e of attrEntail) {
+        html += `<tr><td style="text-align:left">${e.label}</td><td>${e.num_fds}</td><td>${e.num_attrs}</td><td style="color:var(--accent2)">${e.time_ms}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+      const maxT = Math.max(...attrEntail.map(e => e.time_ms));
+      for (const e of attrEntail) {
+        const pct = maxT > 0 ? (e.time_ms / maxT * 100) : 0;
+        html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
+        html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
+        html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
+      }
+    }
+
+    if (attrLossless.length) {
+      html += '<div class="result-title" style="margin-top:16px"><strong>Lossless Join vs |U|</strong></div>';
+      html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+      html += '<table class="data-table"><thead><tr>';
+      html += '<th>Label</th><th>|Σ|</th><th>|U|</th><th>ms/op</th><th>Avg Steps</th><th>Avg Final Rows</th>';
+      html += '</tr></thead><tbody>';
+      for (const e of attrLossless) {
+        html += `<tr><td style="text-align:left">${e.label}</td><td>${e.num_fds}</td><td>${e.num_attrs}</td><td style="color:var(--accent)">${e.time_ms}</td><td>${e.stats?.avg_steps ?? '-'}</td><td>${e.stats?.avg_final_rows ?? '-'}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+      const maxT = Math.max(...attrLossless.map(e => e.time_ms));
+      for (const e of attrLossless) {
+        const pct = maxT > 0 ? (e.time_ms / maxT * 100) : 0;
+        html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
+        html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
+        html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
+      }
+    }
+
+    html += '</div>';
+  }
+
   if (data.ablation && data.ablation.length) {
-    html += '<div class="result-title" style="margin-top:16px">Ablation: FD-only vs FD+MVD</div>';
+    html += '<div class="result-box" style="margin-top:16px">';
+    html += '<div class="result-title"><strong>Ablation</strong></div>';
+    html += '<div class="info-box" style="margin-bottom:16px">';
+    html += 'This section compares lossless-join Chase under FD-only and FD+MVD workloads on the same dependency-scaling grid.';
+    html += '</div>';
+    html += '<div class="result-title"><strong>FD-only vs FD+MVD</strong></div>';
+    html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
+    html += '<table class="data-table"><thead><tr>';
+    html += '<th>Label</th><th>|Σ|</th><th>|U|</th><th>ms/op</th><th>Avg Steps</th><th>Avg Final Rows</th><th>#MVDs</th>';
+    html += '</tr></thead><tbody>';
+    for (const e of data.ablation) {
+      const numMvds = e.operation === 'lossless_fd_only' ? '-' : (e.stats?.num_mvds ?? 0);
+      html += `<tr><td style="text-align:left">${e.label}</td><td>${e.num_fds}</td><td>${e.num_attrs}</td><td style="color:var(--accent)">${e.time_ms}</td><td>${e.stats?.avg_steps ?? '-'}</td><td>${e.stats?.avg_final_rows ?? '-'}</td><td>${numMvds}</td></tr>`;
+    }
+    html += '</tbody></table></div>';
     const maxA = Math.max(...data.ablation.map(e => e.time_ms));
     for (const e of data.ablation) {
       const pct = maxA > 0 ? (e.time_ms / maxA * 100) : 0;
       html += `<div class="bench-bar"><span class="bench-label">${e.label}</span>`;
       html += `<div class="bench-track"><div class="bench-fill" style="width:${Math.max(pct,2)}%"></div></div>`;
       html += `<span class="bench-val">${e.time_ms}ms</span></div>`;
-      if (e.stats && (e.stats.avg_steps !== undefined || e.stats.avg_final_rows !== undefined)) {
-        html += `<div style="margin:-6px 0 10px 0;font-family:var(--mono);font-size:11px;color:var(--dim)">`;
-        html += `avg steps: ${e.stats.avg_steps ?? '-'} · avg final rows: ${e.stats.avg_final_rows ?? '-'}</div>`;
-      }
     }
-  }
-
-  if (data.row_scaling && data.row_scaling.length) {
-    html += '<div class="result-title" style="margin-top:16px">Row Scaling</div>';
-    html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);margin-bottom:16px">';
-    html += '<table class="data-table"><thead><tr>';
-    html += '<th>Label</th><th>Operation</th><th>#Rows</th><th>ms/op</th>';
-    html += '</tr></thead><tbody>';
-    for (const e of data.row_scaling) {
-      html += `<tr><td style="text-align:left">${e.label}</td><td>${e.operation}</td><td>${e.num_rows}</td><td>${e.time_ms}</td></tr>`;
-    }
-    html += '</tbody></table></div>';
-  }
-
-  if (data.attr_scaling && data.attr_scaling.length) {
-    html += '<div class="result-title" style="margin-top:16px">Attribute Scaling</div>';
-    html += '<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border)">';
-    html += '<table class="data-table"><thead><tr>';
-    html += '<th>Label</th><th>Operation</th><th>#Attrs</th><th>ms/op</th>';
-    html += '</tr></thead><tbody>';
-    for (const e of data.attr_scaling) {
-      html += `<tr><td style="text-align:left">${e.label}</td><td>${e.operation}</td><td>${e.num_attrs}</td><td>${e.time_ms}</td></tr>`;
-    }
-    html += '</tbody></table></div>';
+    html += '</div>';
   }
 
   html += '</div>';
